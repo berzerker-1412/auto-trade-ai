@@ -199,8 +199,23 @@ class TraderState:
         gold = GoldPriceFeed(source="demo")
 
         symbols_to_trade = self.symbols
+        news_signal_cache = None  # เก็บ news signal ไว้ใช้รอบนึง
+        last_news_fetch = 0  # timestamp ล่าสุดที่ fetch news
 
         while not self.stop_event.is_set():
+            # ── ดึง news signal ทุก 5 นาที ──────────────────────
+            try:
+                if time.time() - last_news_fetch > 300:  # 5 นาที
+                    from scraper.news_scraper import get_articles
+                    from scraper.sentiment import get_trade_signal
+                    articles = get_articles(limit=100)
+                    news_signal_cache = get_trade_signal(articles)
+                    last_news_fetch = time.time()
+                    logger.info(f"[News] Fetched signal: bias={news_signal_cache.get('bias')}, score={news_signal_cache.get('score')}")
+            except Exception as e:
+                logger.warning(f"[News] Failed to fetch news signal: {e}")
+                news_signal_cache = None
+
             for symbol in symbols_to_trade:
                 try:
                     if "XAU" in symbol:
@@ -217,20 +232,22 @@ class TraderState:
                             "low": ticker.get("low"),
                         }
 
+                    # ── สร้าง signal โดยส่ง news sentiment ด้วย ───────
                     signal = ai.generate_signal(
                         symbol=symbol,
                         asset_type=AssetType.GOLD if "XAU" in symbol else AssetType.CRYPTO,
                         market_data=price_data,
+                        news_signal=news_signal_cache,
                     )
 
                     if signal:
                         # ประมวลผลสัญญาณผ่าน paper trader
                         if signal.direction.value == "buy":
                             result = trader.execute_signal(signal)
-                            logger.info(f"SIGNAL BUY: {symbol} @ {signal.entry_price}, qty={signal.quantity}")
+                            logger.info(f"SIGNAL BUY [{signal.reasoning}]: {symbol} @ {signal.entry_price}, qty={signal.quantity}")
                         elif signal.direction.value == "sell":
                             result = trader.close_trade(symbol, price_data.get("price"))
-                            logger.info(f"SIGNAL SELL: {symbol} @ {price_data.get('price')}")
+                            logger.info(f"SIGNAL SELL [{signal.reasoning}]: {symbol} @ {price_data.get('price')}")
 
                         # อัปเดต stats
                         self._refresh_stats(trader)
@@ -627,7 +644,95 @@ async def update_settings(req: SettingsUpdateRequest):
                 (key, str(value)),
             )
         conn.commit()
-    return {"success": True, "message": "Settings updated"}
+
+
+# ── News / Intelligence Feed ────────────────────────────────
+@app.get("/api/news/feed")
+async def get_news_feed(limit: int = 50, category: str = None, source: str = None):
+    """
+    ดึงข่าวทั้งหมด + trade signal ที่สร้างจาก sentiment analysis
+
+    Query params:
+    - limit: จำนวนข่าว (default 50)
+    - category: filter เช่น war, finance, crypto (optional)
+    - source: filter เช่น Reuters, Bloomberg (optional)
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import get_articles, get_trade_signal
+    except ImportError as e:
+        logger.warning(f"Could not import news scraper: {e}")
+        return {"articles": [], "trade_signal": None, "total": 0, "generated_at": datetime.now().isoformat()}
+
+    try:
+        articles = get_articles(limit=limit, category=category, source=source)
+        trade_signal = get_trade_signal(articles)
+
+        for art in articles:
+            score = art.get("sentiment_score", 0)
+            art["sentiment_label"] = (
+                "positive" if score > 0.2
+                else "negative" if score < -0.2
+                else "neutral"
+            )
+
+        return {
+            "articles": articles,
+            "trade_signal": trade_signal,
+            "total": len(articles),
+            "generated_at": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Error getting news feed: {e}")
+        raise HTTPException(status_code=500, detail=f"News feed error: {e}")
+
+
+@app.post("/api/news/scrape")
+async def trigger_scrape():
+    """
+    สั่ง scrape ข่าวใหม่จากทุกแหล่ง
+    ควรเรียกผ่าน cron job หรือปุ่ม manual scrape
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import NewsScraper
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    try:
+        scraper = NewsScraper()
+        result = scraper.scrape_all()
+        return {
+            "status": "ok",
+            "total_saved": result["total_saved"],
+            "sources_scraped": result["sources_scraped"],
+            "errors": result.get("errors", []),
+        }
+    except Exception as e:
+        logger.error(f"Scrape error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news/signal")
+async def get_trade_signal_endpoint():
+    """
+    ดึงเฉพาะ trade signal ที่สร้างจากข่าว
+    ใช้สำหรับ AI signal generator ประกอบการตัดสินใจ
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import get_articles
+        from scraper.sentiment import get_trade_signal
+    except ImportError as e:
+        return {"bias": "neutral", "score": 0.0, "signal": None}
+
+    articles = get_articles(limit=100)
+    signal = get_trade_signal(articles)
+    return signal
+
 
 # ── Run Server ─────────────────────────────────────────────
 if __name__ == "__main__":

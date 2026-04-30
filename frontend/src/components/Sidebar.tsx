@@ -11,6 +11,7 @@ import {
   Wallet,
   BarChart2,
   Radio,
+  Newspaper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { THBBalance } from "@/components/ExchangeRate";
@@ -18,6 +19,7 @@ import { THBBalance } from "@/components/ExchangeRate";
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Live Market", href: "/live", icon: Radio },
+  { name: "News Feed", href: "/news", icon: Newspaper },
   { name: "Analysis", href: "/analysis", icon: BarChart2 },
   { name: "Trade History", href: "/history", icon: History },
   { name: "Paper Trade", href: "/trade", icon: Play },

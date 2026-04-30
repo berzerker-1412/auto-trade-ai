@@ -47,12 +47,14 @@ auto-trade-ai/                    ← project root
 │   │   ├── concepts/  ← one page per idea/topic
 │   │   ├── sources/   ← one summary per ingested source
 │   │   └── projects/  ← one subfolder per project
-│   └── wiki_th/       ← Thai human notes (user writes here)
+│   └── wiki_th/       ← Thai human notes (auto-synced from wiki/ via hook)
 │       ├── index.md
 │       ├── concepts/
 │       ├── entities/
 │       ├── sources/
 │       └── projects/
+│
+├── .git/hooks/        ← post-commit hook auto-syncs wiki/ → wiki_th/
 │
 ├── frontend/           ← Next.js dashboard
 ├── api/                ← API server
@@ -166,7 +168,7 @@ When adding knowledge to an existing project: add a new page or update the relev
 `wiki_th/` คือโน้ตภาษาไทยที่คนเขียนเอง — ไม่มี frontmatter, ไม่มี structure บังคับ เขียนได้อิสระ
 `wiki/` คือ knowledge base ภาษาอังกฤษที่ Claude maintain — structured, cross-linked, AI-readable
 
-> **MANDATORY RULE: ทุกครั้งที่เขียนหรือแก้ไขไฟล์ใดๆ ใน `wiki/` จะต้อง sync มาที่ `wiki_th/` เสมอ ไม่มีข้อยกเว้น**
+> **MANDATORY RULE: ทุกครั้งที่เขียนหรือแก้ไขไฟล์ใดๆ ใน `wiki/` จะต้อง sync มาที่ `wiki_th/` เสมอ ไม่มีข้อยกเว้น** — การ sync เป็น automatic ผ่าน `.git/hooks/post-commit` (copy ไฟล์ไป wiki_th/ ทันทีหลัง commit) แต่ยังต้อง review และ translate เป็นภาษาไทยเอง
 > การ write wiki page โดยไม่มี sync ถือว่างานไม่เสร็จ
 
 Sync process:

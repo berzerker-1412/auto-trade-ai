@@ -367,4 +367,157 @@ export const api = {
       body: JSON.stringify(settings),
     });
   },
+
+  // ── News / Intelligence ────────────────────────────────────
+
+  async getNewsFeed(limit = 50, category?: string): Promise<{
+    articles: NewsArticle[];
+    trade_signal: NewsSignal;
+    total: number;
+    generated_at: string;
+  }> {
+    if (USE_MOCK) {
+      return {
+        articles: MOCK_NEWS_ARTICLES,
+        trade_signal: MOCK_NEWS_SIGNAL,
+        total: MOCK_NEWS_ARTICLES.length,
+        generated_at: new Date().toISOString(),
+      };
+    }
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (category && category !== "all") params.set("category", category);
+    return fetchAPI(`/api/news/feed?${params}`);
+  },
+
+  async triggerNewsScrape(): Promise<{
+    status: string;
+    total_saved: number;
+    sources_scraped: number;
+    errors: string[];
+  }> {
+    return fetchAPI("/api/news/scrape", { method: "POST" });
+  },
+
+  async getNewsSignal(): Promise<NewsSignal> {
+    if (USE_MOCK) return MOCK_NEWS_SIGNAL;
+    return fetchAPI("/api/news/signal");
+  },
 };
+
+// ── Mock Data ────────────────────────────────────────────────
+
+const MOCK_NEWS_ARTICLES: NewsArticle[] = [
+  {
+    id: 1,
+    title: "Fed signals potential rate cut amid cooling inflation data",
+    url: "https://reuters.com",
+    source: "Reuters",
+    category: "economy",
+    published_at: new Date(Date.now() - 3600000).toISOString(),
+    summary: "Federal Reserve officials indicated they may consider cutting interest rates...",
+    content: "",
+    sentiment_score: 0.4,
+    sentiment_label: "positive",
+    impact_tags: ["USD", "DXY", "FOREX"],
+  },
+  {
+    id: 2,
+    title: "Bitcoin surges past $68,000 as institutional inflows continue",
+    url: "https://bloomberg.com",
+    source: "Bloomberg",
+    category: "crypto",
+    published_at: new Date(Date.now() - 7200000).toISOString(),
+    summary: "Bitcoin price rallied to new highs amid continued institutional buying...",
+    content: "",
+    sentiment_score: 0.6,
+    sentiment_label: "positive",
+    impact_tags: ["CRYPTO", "BTC"],
+  },
+  {
+    id: 3,
+    title: "Ukraine-Russia conflict escalates with new offensive operations",
+    url: "https://bbc.com",
+    source: "BBC News",
+    category: "war",
+    published_at: new Date(Date.now() - 10800000).toISOString(),
+    summary: "Military operations intensified along the eastern front lines...",
+    content: "",
+    sentiment_score: -0.7,
+    sentiment_label: "negative",
+    impact_tags: ["XAUUSD", "EUR", "RISK_OFF"],
+  },
+  {
+    id: 4,
+    title: "Gold hits record high as safe-haven demand surges",
+    url: "https://reuters.com",
+    source: "Reuters",
+    category: "commodities",
+    published_at: new Date(Date.now() - 14400000).toISOString(),
+    summary: "Gold prices climbed to all-time highs driven by geopolitical uncertainty...",
+    content: "",
+    sentiment_score: 0.5,
+    sentiment_label: "positive",
+    impact_tags: ["XAUUSD"],
+  },
+  {
+    id: 5,
+    title: "Solana network experiences outage amid high transaction volume",
+    url: "https://coindesk.com",
+    source: "CoinDesk",
+    category: "crypto",
+    published_at: new Date(Date.now() - 18000000).toISOString(),
+    summary: "Solana blockchain went offline for several hours due to network congestion...",
+    content: "",
+    sentiment_score: -0.5,
+    sentiment_label: "negative",
+    impact_tags: ["CRYPTO", "SOL"],
+  },
+];
+
+const MOCK_NEWS_SIGNAL: NewsSignal = {
+  bias: "bullish",
+  score: 0.27,
+  signal: {
+    direction: "buy",
+    top_assets: ["CRYPTO", "XAUUSD", "USD"],
+    confidence: 0.55,
+  },
+  reason: "Mixed sentiment (0.27) from 5 articles — crypto bullish offset by war risk",
+  impacted_assets: ["CRYPTO", "XAUUSD", "USD", "EUR"],
+  asset_sentiments: { CRYPTO: 0.55, XAUUSD: 0.5, USD: 0.4, EUR: -0.35 },
+  category_breakdown: { crypto: 2, war: 1, economy: 1, commodities: 1 },
+  risk_level: "medium",
+  article_count: 5,
+};
+
+interface NewsArticle {
+  id: number;
+  title: string;
+  url: string;
+  source: string;
+  category: string;
+  published_at: string | null;
+  summary: string;
+  content: string;
+  sentiment_score: number;
+  sentiment_label: "positive" | "negative" | "neutral";
+  impact_tags: string[];
+}
+
+interface NewsSignal {
+  bias: string;
+  score: number;
+  signal: {
+    direction: string;
+    top_assets: string[];
+    confidence: number;
+    reason?: string;
+  } | null;
+  reason: string;
+  impacted_assets: string[];
+  asset_sentiments: Record<string, number>;
+  category_breakdown: Record<string, number>;
+  risk_level: string;
+  article_count: number;
+}
+
