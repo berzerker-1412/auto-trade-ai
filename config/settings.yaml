@@ -1,0 +1,47 @@
+# Auto Trade AI Configuration
+
+exchange:
+  name: binance
+  api_key: ""  # Set your API key here
+  api_secret: ""  # Set your API secret here
+  testnet: true  # Use testnet for paper trading
+
+paper_trade:
+  enabled: true
+  initial_balance: 100000  # USD or THB depending on quote currency
+  balance_currency: USDT
+
+crypto:
+  enabled: true
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+  default_quantity: 0.001  # BTC, adjust per asset
+  timeframe: 1h  # Trading timeframe
+
+gold:
+  enabled: true
+  source: demo  # Options: demo, alpha_vantage, goldapi
+  symbol: XAUUSD
+  api_key: ""  # Required for alpha_vantage or goldapi
+
+ai:
+  enabled: true
+  provider: openai  # Options: openai, anthropic, local
+  model: gpt-4o
+  api_key: ""  # Set your OpenAI API key
+  confidence_threshold: 0.75  # Minimum confidence to execute trade
+  max_trades_per_day: 5
+
+risk_management:
+  max_position_size: 0.1  # Max 10% of balance per trade
+  stop_loss_percent: 2.0  # 2% stop loss
+  take_profit_percent: 5.0  # 5% take profit
+  max_concurrent_trades: 3
+
+logging:
+  level: INFO
+  save_trades: true
+  trade_db_path: data/trades.db
+  log_path: logs/
