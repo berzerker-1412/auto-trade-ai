@@ -1599,81 +1599,972 @@ class TradingAgent:
 
 ## 9. การนำไปใช้ในโปรเจกต์
 
-### 9.1 โครงสร้าง Signal Generator
+### 9.1 Python Code ตัวอย่าง: Technical Indicators
 
 ```python
-# src/ai/signal_generator.py (ปัจจุบัน)
+"""
+src/ai/technical_indicators.py
+────────────────────────────────
+คำนวณ Technical Indicators พื้นฐานสำหรับการเทรด
+ใช้ library ta (https://ta-lib.github.io/ta-doc/)
+"""
+
+import pandas as pd
+import numpy as np
+import ta  # pip install ta
+
+
+def calculate_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    คำนวณ Indicators ทั้งหมดจาก OHLCV DataFrame
+
+    Args:
+        df: DataFrame ที่มี columns ['open', 'high', 'low', 'close', 'volume']
+
+    Returns:
+        DataFrame ที่เพิ่ม columns ของ Indicators
+    """
+    # ── 1. Trend Indicators ──────────────────────────────────
+
+    # SMA (Simple Moving Average) — ค่าเฉลี่ยเคลื่อนที่แบบธรรมดา
+    df['sma_20'] = ta.trend.SMAIndicator(df['close'], window=20).sma_indicator()
+    df['sma_50'] = ta.trend.SMAIndicator(df['close'], window=50).sma_indicator()
+    df['sma_200'] = ta.trend.SMAIndicator(df['close'], window=200).sma_indicator()
+
+    # EMA (Exponential Moving Average) — ค่าเฉลี่ยถ่วงน้ำหนักล่าสุด
+    df['ema_12'] = ta.trend.EMAIndicator(df['close'], window=12).ema_indicator()
+    df['ema_26'] = ta.trend.EMAIndicator(df['close'], window=26).ema_indicator()
+
+    # MACD — Moving Average Convergence Divergence
+    # ใช้ MACD Line = EMA12 - EMA26, Signal Line = EMA9 ของ MACD
+    macd = ta.trend.MACD(df['close'])
+    df['macd'] = macd.macd()              # MACD Line
+    df['macd_signal'] = macd.macd_signal() # Signal Line
+    df['macd_hist'] = macd.macd_diff()     # Histogram (ต่างระหว่าง MACD กับ Signal)
+
+    # ADX — Average Directional Index (ความแข็งแกร่งแนวโน้ม)
+    adx = ta.trend.ADXIndicator(
+        df['high'], df['low'], df['close'], window=14
+    )
+    df['adx'] = adx.adx()          # ADX ค่า 0-100
+    df['adx_pos'] = adx.adx_pos()  # +DI — แนวโน้มขาขึ้น
+    df['adx_neg'] = adx.adx_neg()  # -DI — แนวโน้มขาลง
+
+    # Supertrend — หาจุดเข้าออกง่ายๆ ด้วย ATR
+    st = ta.volatility.Supertrend(df['high'], df['low'], df['close'])
+    df['supertrend'] = st.supertrend()       # ค่า Supertrend
+    df['supertrend_dir'] = st.supertrend_dir() # 1=ขาขึ้น, -1=ขาลง
+
+    # ── 2. Momentum Indicators ──────────────────────────────
+
+    # RSI — Relative Strength Index (0-100)
+    # RSI > 70 = Overbought (อาจจะลง), RSI < 30 = Oversold (อาจจะขึ้น)
+    df['rsi_14'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
+
+    # Stochastic — เปรียบเทียบราคาปิดกับช่วง High-Low
+    stoch = ta.momentum.StochasticOscillator(
+        df['high'], df['low'], df['close'], window=14, smooth_window=3
+    )
+    df['stoch_k'] = stoch.stoch()   # %K
+    df['stoch_d'] = stoch.stoch_signal()  # %D
+
+    # CCI — Commodity Channel Index
+    df['cci_20'] = ta.momentum.CCIIndicator(
+        df['high'], df['low'], df['close'], window=20
+    ).cci()
+
+    # Williams %R — คล้าย RSI แต่กลับด้าน
+    df['williams_r'] = ta.momentum.WilliamsRIndicator(
+        df['high'], df['low'], df['close'], lbp=14
+    ).williams_r()
+
+    # ROC — Rate of Change (อัตราการเปลี่ยนแปลง %)
+    df['roc_12'] = ta.momentum.ROCIndicator(df['close'], window=12).roc()
+
+    # ── 3. Volatility Indicators ────────────────────────────
+
+    # Bollinger Bands — ช่วงความผันผวน 2 StdDev รอบ SMA20
+    bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
+    df['bb_upper'] = bb.bollinger_hband()   # เส้นบน
+    df['bb_middle'] = bb.bollinger_mavg()    # เส้นกลาง (SMA20)
+    df['bb_lower'] = bb.bollinger_lband()    # เส้นล่าง
+    df['bb_width'] = bb.bollinger_wband()   # ความกว้าง Band
+
+    # ATR — Average True Range (ความผันผวนเฉลี่ย)
+    df['atr_14'] = ta.volatility.AverageTrueRange(
+        df['high'], df['low'], df['close'], window=14
+    ).average_true_range()
+
+    # Keltner Channels — EMA + ATR Channel
+    kc = ta.volatility.KeltnerChannel(
+        df['high'], df['low'], df['close'], window=20, atr_window=10
+    )
+    df['kc_upper'] = kc.keltner_channel_hband()
+    df['kc_middle'] = kc.keltner_channel_mavg()
+    df['kc_lower'] = kc.keltner_channel_lband()
+
+    # ── 4. Volume Indicators ────────────────────────────────
+
+    # OBV — On Balance Volume (รวม Volume เข้าออก)
+    df['obv'] = ta.volume.OnBalanceVolumeIndicator(
+        df['close'], df['volume']
+    ).on_balance_volume()
+
+    # VWAP — Volume Weighted Average Price (ราคาเฉลี่ยถ่วงน้ำหนัก Volume)
+    df['vwap'] = ta.volume.VolumeWeightedAveragePrice(
+        df['high'], df['low'], df['close'], df['volume']
+    ).volume_weighted_average_price()
+
+    # MFI — Money Flow Index (RSI ของเงิน)
+    df['mfi_14'] = ta.volume.MFIIndicator(
+        df['high'], df['low'], df['close'], df['volume'], window=14
+    ).money_flow_index()
+
+    # CMF — Chaikin Money Flow
+    df['cmf_20'] = ta.volume.ChaikinMoneyFlowIndicator(
+        df['high'], df['low'], df['close'], df['volume'], window=20
+    ).chaikin_money_flow()
+
+    # Volume SMA — ปริมาณเฉลี่ย
+    df['volume_sma_20'] = ta.trend.SMAIndicator(df['volume'], window=20).sma_indicator()
+
+    return df
+```
+
+### 9.2 Python Code ตัวอย่าง: Pattern Detection
+
+```python
+"""
+src/ai/pattern_detector.py
+────────────────────────────
+ตรวจจับ Candlestick Patterns และ Chart Patterns
+"""
+
+import pandas as pd
+import numpy as np
+from dataclasses import dataclass
+from typing import List, Optional
+
+
+@dataclass
+class CandlePattern:
+    """ผลลัพธ์ของ Pattern ที่ตรวจจับได้"""
+    name: str              # ชื่อ pattern เช่น "BULLISH_ENGULFING"
+    bullish: bool          # True = ขาขึ้น, False = ขาลง
+    confidence: float      # ความมั่นใจ 0.0 - 1.0
+    location: int          # index ของแท่งที่พบ pattern
+
+
+def is_doji(candle: pd.Series, threshold: float = 0.1) -> bool:
+    """
+    ตรวจ Doji — แท่งเทียนที่เปิด-ปิดใกล้กันมาก
+    threshold = 0.1 หมายถึง body < 10% ของช่วง High-Low
+    """
+    body = abs(candle['close'] - candle['open'])
+    total_range = candle['high'] - candle['low']
+
+    if total_range == 0:
+        return False
+
+    # body เล็กมากเมื่อเทียบกับทั้งแท่ง
+    return (body / total_range) < threshold
+
+
+def is_hammer(candle: pd.Series) -> bool:
+    """
+    ตรวจ Hammer — รูปแบบกลับตัวขาขึ้น
+    เงื่อนไข:
+      1. ไส้ล่างยาวอย่างน้อย 2 เท่าของ body
+      2. body อยู่ในครึ่งบนของแท่ง
+      3. ไส้บนสั้นมาก
+    """
+    body = abs(candle['close'] - candle['open'])
+    upper_wick = candle['high'] - max(candle['open'], candle['close'])
+    lower_wick = min(candle['open'], candle['close']) - candle['low']
+    total_range = candle['high'] - candle['low']
+
+    if body == 0 or total_range == 0:
+        return False
+
+    # ไส้ล่างต้องยาวอย่างน้อย 2 เท่าของ body
+    lower_wick_long_enough = lower_wick >= 2 * body
+
+    # body ต้องอยู่ในครึ่งบน
+    body_in_upper_half = min(candle['open'], candle['close']) >= (
+        candle['low'] + total_range * 0.5
+    )
+
+    # ไส้บนต้องสั้น
+    upper_wick_short = upper_wick <= body * 0.5
+
+    return lower_wick_long_enough and body_in_upper_half and upper_wick_short
+
+
+def is_bullish_engulfing(candles: pd.DataFrame, idx: int) -> bool:
+    """
+    ตรวจ Bullish Engulfing — แท่งที่ 2 กลืนแท่งที่ 1
+    ต้องเกิดที่ก้นของ Downtrend
+    """
+    if idx < 1:
+        return False
+
+    candle_1 = candles.iloc[idx - 1]
+    candle_2 = candles.iloc[idx]
+
+    # แท่ง 1 ต้องเป็นสีแดง (bearish)
+    prev_bearish = candle_1['close'] < candle_1['open']
+
+    # แท่ง 2 ต้องเป็นสีเขียว (bullish)
+    curr_bullish = candle_2['close'] > candle_2['open']
+
+    # แท่ง 2 ต้องกลืนแท่ง 1 ทั้งหมด (body ของแท่ง 2 > body ของแท่ง 1)
+    body_1 = abs(candle_1['close'] - candle_1['open'])
+    body_2 = abs(candle_2['close'] - candle_2['open'])
+
+    # ตรวจว่าแท่ง 2 กลืนแท่ง 1
+    engulfing = (
+        curr_bullish
+        and prev_bearish
+        and body_2 > body_1
+        and candle_2['open'] < candle_1['close']  # เปิดต่ำกว่าปิดแท่ง 1
+        and candle_2['close'] > candle_1['open']   # ปิดสูงกว่าเปิดแท่ง 1
+    )
+
+    return engulfing
+
+
+def is_bearish_engulfing(candles: pd.DataFrame, idx: int) -> bool:
+    """ตรวจ Bearish Engulfing — ตรงข้ามกับ Bullish Engulfing"""
+    if idx < 1:
+        return False
+
+    candle_1 = candles.iloc[idx - 1]
+    candle_2 = candles.iloc[idx]
+
+    prev_bullish = candle_1['close'] > candle_1['open']
+    curr_bearish = candle_2['close'] < candle_2['open']
+
+    body_1 = abs(candle_1['close'] - candle_1['open'])
+    body_2 = abs(candle_2['close'] - candle_2['open'])
+
+    engulfing = (
+        curr_bearish
+        and prev_bullish
+        and body_2 > body_1
+        and candle_2['open'] > candle_1['close']
+        and candle_2['close'] < candle_1['open']
+    )
+
+    return engulfing
+
+
+def detect_all_candlestick_patterns(candles: pd.DataFrame) -> List[CandlePattern]:
+    """
+    ตรวจจับ patterns ทั้งหมดใน DataFrame
+    """
+    patterns = []
+
+    for i in range(1, len(candles)):
+        candle = candles.iloc[i]
+
+        # ── Single Candle Patterns ──
+        if is_doji(candle):
+            patterns.append(CandlePattern(
+                name="DOJI",
+                bullish=False,  # Doji เป็นกลาง ต้องรอยืนยัน
+                confidence=0.5,
+                location=i
+            ))
+
+        if is_hammer(candle):
+            patterns.append(CandlePattern(
+                name="BULLISH_HAMMER",
+                bullish=True,
+                confidence=0.7,
+                location=i
+            ))
+
+        # ── Double Candle Patterns ──
+        if is_bullish_engulfing(candles, i):
+            # คำนวณ confidence จากขนาด body
+            body_1 = abs(candles.iloc[i-1]['close'] - candles.iloc[i-1]['open'])
+            body_2 = abs(candle['close'] - candle['open'])
+            confidence = min(body_2 / body_1 * 0.5, 1.0)  # กลืนมาก = มั่นใจมาก
+
+            patterns.append(CandlePattern(
+                name="BULLISH_ENGULFING",
+                bullish=True,
+                confidence=confidence,
+                location=i
+            ))
+
+        if is_bearish_engulfing(candles, i):
+            body_1 = abs(candles.iloc[i-1]['close'] - candles.iloc[i-1]['open'])
+            body_2 = abs(candle['close'] - candle['open'])
+            confidence = min(body_2 / body_1 * 0.5, 1.0)
+
+            patterns.append(CandlePattern(
+                name="BEARISH_ENGULFING",
+                bullish=False,
+                confidence=confidence,
+                location=i
+            ))
+
+    return patterns
+```
+
+### 9.3 Python Code ตัวอย่าง: Trading Signal Generator
+
+```python
+"""
+src/ai/signal_generator_v2.py
+──────────────────────────────
+ระบบสร้าง Signal ที่ใช้ Technical Analysis + Patterns
+ดีกว่าเวอร์ชันเดิมที่ใช้แค่ LLM อย่างเดียว
+"""
+
+import pandas as pd
+import numpy as np
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List, Optional
+from .technical_indicators import calculate_all_indicators
+from .pattern_detector import detect_all_candlestick_patterns, CandlePattern
+
+
+class Signal(Enum):
+    """สัญญาณการเทรด"""
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+
+
+@dataclass
+class TradingSignal:
+    """ผลลัพธ์ของการวิเคราะห์"""
+    signal: Signal
+    confidence: float                    # 0.0 - 1.0
+    reasons: List[str] = field(default_factory=list)
+    indicators: dict = field(default_factory=dict)
+    patterns: List[str] = field(default_factory=list)
+
+
 class SignalGenerator:
-    def generate(self, symbol, data):
-        # ใช้ LLM สร้าง Signal
-        # ปรับปรุง: เพิ่ม Technical Analysis ก่อน
-        
-# โครงสร้างที่ควรเป็น:
-class SignalGenerator:
-    def generate(self, symbol, data):
-        # 1. คำนวณ Indicators
-        indicators = self.compute_indicators(data)
-        
-        # 2. ตรวจจับ Patterns
-        patterns = self.detect_patterns(data)
-        
-        # 3. Technical Score
-        score = self.technical_score(indicators, patterns)
-        
-        # 4. ใช้ LLM รวมข้อมูล
-        signal = self.llm_signal(symbol, score)
-        
-        return signal
+    """
+    ระบบสร้างสัญญาณเทรดแบบ Multi-Factor
+
+    ขั้นตอน:
+      1. คำนวณ Indicators ทั้งหมด
+      2. ตรวจจับ Candlestick Patterns
+      3. คำนวณ Technical Score
+      4. รวมเป็น Signal
+    """
+
+    def __init__(self, symbol: str = "BTC/USDT"):
+        self.symbol = symbol
+
+    def generate(self, candles: pd.DataFrame) -> TradingSignal:
+        """
+        วิเคราะห์และสร้างสัญญาณ
+
+        Args:
+            candles: DataFrame ที่มี columns [timestamp, open, high, low, close, volume]
+
+        Returns:
+            TradingSignal object
+        """
+        # ── ขั้นที่ 1: คำนวณ Indicators ──────────────────────────
+        df = calculate_all_indicators(candles.copy())
+        latest = df.iloc[-1]
+
+        # ── ขั้นที่ 2: ตรวจ Patterns ───────────────────────────────
+        patterns = detect_all_candlestick_patterns(candles)
+        latest_patterns = [p for p in patterns if p.location == len(candles) - 1]
+
+        # ── ขั้นที่ 3: คำนวณ Scores จากแต่ละ Indicator ───────────
+        scores = []
+
+        # ── RSI Score ──────────────────────────────────────────
+        rsi = latest['rsi_14']
+        if rsi < 30:
+            # Oversold → มีโอกาสกลับตัวขึ้น
+            rsi_score = (30 - rsi) / 30  # 0 ถึง 1
+            scores.append(("RSI_OVERSOLD", rsi_score, True))
+        elif rsi > 70:
+            # Overbought → มีโอกาสกลับตัวลง
+            rsi_score = (rsi - 70) / 30
+            scores.append(("RSI_OVERBOUGHT", rsi_score, False))
+
+        # ── MACD Score ────────────────────────────────────────
+        macd = latest['macd']
+        macd_signal = latest['macd_signal']
+        macd_hist = latest['macd_hist']
+
+        if macd > macd_signal and macd_hist > 0:
+            # MACD ตัดขึ้นเหนือ Signal + Histogram เป็นบวก
+            scores.append(("MACD_BULLISH_CROSS", 0.8, True))
+        elif macd < macd_signal and macd_hist < 0:
+            scores.append(("MACD_BEARISH_CROSS", 0.8, False))
+
+        # ── ADX Score (ความแข็งแกร่งแนวโน้ม) ──────────────────
+        adx = latest['adx']
+        if adx > 25:
+            adx_score = min(adx / 100, 1.0)
+            if latest['adx_pos'] > latest['adx_neg']:
+                scores.append(("ADX_UPTEND", adx_score, True))
+            else:
+                scores.append(("ADX_DOWNTREND", adx_score, False))
+
+        # ── Bollinger Bands Score ──────────────────────────────
+        bb_upper = latest['bb_upper']
+        bb_lower = latest['bb_lower']
+        bb_middle = latest['bb_middle']
+        close = latest['close']
+
+        # ราคาแตะ Lower Band = Oversold (อาจจะเด้งขึ้น)
+        if close <= bb_lower:
+            bb_score = (bb_lower - close) / (bb_lower - bb_middle) if bb_lower != bb_middle else 0.5
+            scores.append(("BB_LOWER_TOUCH", min(bb_score, 1.0), True))
+
+        # ราคาแตะ Upper Band = Overbought (อาจจะลง)
+        if close >= bb_upper:
+            bb_score = (close - bb_upper) / (bb_middle - bb_upper) if bb_middle != bb_upper else 0.5
+            scores.append(("BB_UPPER_TOUCH", min(bb_score, 1.0), False))
+
+        # ── Moving Average Score ───────────────────────────────
+        sma_20 = latest['sma_20']
+        sma_50 = latest['sma_50']
+        sma_200 = latest['sma_200']
+
+        # Golden Cross / Death Cross
+        if sma_20 > sma_50 and df.iloc[-2]['sma_20'] <= df.iloc[-2]['sma_50']:
+            scores.append(("GOLDEN_CROSS", 0.9, True))
+        if sma_20 < sma_50 and df.iloc[-2]['sma_20'] >= df.iloc[-2]['sma_50']:
+            scores.append(("DEATH_CROSS", 0.9, False))
+
+        # Price > SMA = Uptrend / Price < SMA = Downtrend
+        if close > sma_50:
+            ma_score = (close - sma_50) / sma_50
+            scores.append(("PRICE_ABOVE_SMA50", min(ma_score * 5, 1.0), True))
+        else:
+            ma_score = (sma_50 - close) / sma_50
+            scores.append(("PRICE_BELOW_SMA50", min(ma_score * 5, 1.0), False))
+
+        # ── Supertrend Score ──────────────────────────────────
+        st_dir = latest['supertrend_dir']
+        if st_dir == 1:
+            scores.append(("SUPERTREND_UP", 0.7, True))
+        else:
+            scores.append(("SUPERTREND_DOWN", 0.7, False))
+
+        # ── ขั้นที่ 4: รวม Score และตัดสินใจ ───────────────────
+        bullish_score = sum(s[1] for s in scores if s[2] is True)
+        bearish_score = sum(s[1] for s in scores if s[2] is False)
+
+        # รวม Pattern signals
+        for p in latest_patterns:
+            pattern_score = p.confidence * 0.5  # patterns มีน้ำหนัง 50%
+            if p.bullish:
+                bullish_score += pattern_score
+            else:
+                bearish_score += pattern_score
+
+        # คำนวณ Net Score
+        total_score = bullish_score - bearish_score
+        confidence = min(abs(total_score) / 5, 1.0)  # normalize 0-1
+
+        # ตัดสินใจ
+        if total_score >= 1.5:
+            signal = Signal.BUY
+        elif total_score <= -1.5:
+            signal = Signal.SELL
+        else:
+            signal = Signal.HOLD
+
+        # รวบรวมเหตุผล
+        reasons = []
+        for name, score, direction in scores:
+            reasons.append(f"{name}: {score:.2f}")
+
+        # เพิ่ม pattern names
+        pattern_names = [p.name for p in latest_patterns]
+
+        return TradingSignal(
+            signal=signal,
+            confidence=confidence,
+            reasons=reasons,
+            indicators={
+                "rsi": float(rsi),
+                "macd": float(macd),
+                "macd_signal": float(macd_signal),
+                "adx": float(adx),
+                "bb_position": float((close - bb_lower) / (bb_upper - bb_lower)),
+                "supertrend_dir": int(st_dir),
+            },
+            patterns=pattern_names
+        )
+
+    def generate_with_llm(
+        self,
+        candles: pd.DataFrame,
+        llm_api_callable
+    ) -> TradingSignal:
+        """
+        รวม Technical Analysis กับ LLM สำหรับคำอธิบาย
+        """
+        # วิเคราะห์ทางเทคนิคก่อน
+        ta_signal = self.generate(candles)
+
+        # ส่งข้อมูลให้ LLM สร้างคำอธิบาย
+        prompt = f"""
+        Symbol: {self.symbol}
+        Signal: {ta_signal.signal.value}
+        Confidence: {ta_signal.confidence:.2f}
+        Indicators: {ta_signal.indicators}
+        Patterns: {ta_signal.patterns}
+
+        คำอธิบาย: [ให้ LLM อธิบายสัญญาณนี้]
+        """
+
+        # ปรับปรุง confidence ด้วย LLM (ถ้าต้องการ)
+        return ta_signal
 ```
 
-### 9.2 สิ่งที่ควรเพิ่มในโปรเจกต์
+### 9.4 Python Code ตัวอย่าง: Backtesting
 
-#### ระดับที่ 1 — Indicators (ง่าย)
 ```python
-# เพิ่ม RSI, MACD, Bollinger Bands
-import ta
+"""
+src/ai/backtester.py
+─────────────────────
+ทดสอบ Strategy กับข้อมูลย้อนหลัง (Backtesting)
+"""
 
-rsi = ta.momentum.RSIIndicator(close, window=14).rsi()
-macd = ta.trend.MACD(close)
-bollinger = ta.volatility.BollingerBands(close)
+import pandas as pd
+import numpy as np
+from dataclasses import dataclass
+from typing import List, Callable
+from .signal_generator_v2 import SignalGenerator, Signal
+
+
+@dataclass
+class BacktestResult:
+    """ผลลัพธ์ของ Backtest"""
+    total_trades: int
+    winning_trades: int
+    losing_trades: int
+    win_rate: float
+    total_pnl: float
+    max_drawdown: float
+    sharpe_ratio: float
+
+    def __str__(self):
+        return (
+            f"Backtest Result:\n"
+            f"  Total Trades: {self.total_trades}\n"
+            f"  Win Rate: {self.win_rate:.1%}\n"
+            f"  Total P&L: {self.total_pnl:.2f}\n"
+            f"  Max Drawdown: {self.max_drawdown:.1%}\n"
+            f"  Sharpe Ratio: {self.sharpe_ratio:.2f}"
+        )
+
+
+def backtest_strategy(
+    candles: pd.DataFrame,
+    signal_generator: SignalGenerator,
+    initial_balance: float = 10_000.0,
+    position_size_pct: float = 0.1,   # ขนาดสถานะ 10% ของพอร์ต
+    risk_reward_ratio: float = 2.0,   # Risk:Reward = 1:2
+    stop_loss_pct: float = 0.02,      # Stop Loss 2%
+) -> BacktestResult:
+    """
+    ทดสอบ Strategy กับข้อมูลย้อนหลัง
+
+    Args:
+        candles: ข้อมูลราคาย้อนหลัง
+        signal_generator: SignalGenerator instance
+        initial_balance: ยอดเริ่มต้น
+        position_size_pct: % ของพอร์ตต่อสถานะ
+        risk_reward_ratio: อัตรา Risk:Reward
+        stop_loss_pct: % Stop Loss
+
+    Returns:
+        BacktestResult object
+    """
+    balance = initial_balance
+    position = None  # {'entry_price': float, 'side': 'long'/'short', 'size': float}
+    trades = []
+    equity_curve = [initial_balance]
+
+    # วนลูปทุกแท่ง
+    for i in range(50, len(candles)):  # เริ่มที่แท่ง 50 เพื่อให้มี indicators
+        window = candles.iloc[:i+1]
+        signal = signal_generator.generate(window)
+        current_price = candles.iloc[i]['close']
+
+        # ── ถ้าไม่มีสถานะ → รอสัญญาณเข้า ──────────────────────────
+        if position is None:
+            if signal.signal == Signal.BUY:
+                # เปิดสถานะ Long
+                size = balance * position_size_pct
+                entry_price = current_price
+                stop_loss = entry_price * (1 - stop_loss_pct)
+                take_profit = entry_price * (1 + stop_loss_pct * risk_reward_ratio)
+
+                position = {
+                    'entry_price': entry_price,
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit,
+                    'size': size,
+                    'side': 'long',
+                    'entry_bar': i
+                }
+
+            elif signal.signal == Signal.SELL:
+                # เปิดสถานะ Short
+                size = balance * position_size_pct
+                entry_price = current_price
+                stop_loss = entry_price * (1 + stop_loss_pct)
+                take_profit = entry_price * (1 - stop_loss_pct * risk_reward_ratio)
+
+                position = {
+                    'entry_price': entry_price,
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit,
+                    'size': size,
+                    'side': 'short',
+                    'entry_bar': i
+                }
+
+        # ── ถ้ามีสถานะ → ตรวจ Stop Loss / Take Profit ───────────
+        else:
+            pnl = 0.0
+
+            if position['side'] == 'long':
+                if current_price <= position['stop_loss']:
+                    # ถูก SL
+                    pnl = -position['size'] * stop_loss_pct
+                    trades.append({'result': 'LOSS', 'pnl_pct': -stop_loss_pct})
+                    balance += pnl
+                    position = None
+
+                elif current_price >= position['take_profit']:
+                    # ถึง TP
+                    reward = stop_loss_pct * risk_reward_ratio
+                    pnl = position['size'] * reward
+                    trades.append({'result': 'WIN', 'pnl_pct': reward})
+                    balance += pnl
+                    position = None
+
+            elif position['side'] == 'short':
+                if current_price >= position['stop_loss']:
+                    pnl = -position['size'] * stop_loss_pct
+                    trades.append({'result': 'LOSS', 'pnl_pct': -stop_loss_pct})
+                    balance += pnl
+                    position = None
+
+                elif current_price <= position['take_profit']:
+                    reward = stop_loss_pct * risk_reward_ratio
+                    pnl = position['size'] * reward
+                    trades.append({'result': 'WIN', 'pnl_pct': reward})
+                    balance += pnl
+                    position = None
+
+        equity_curve.append(balance)
+
+    # ── คำนวณผลลัพธ์ ────────────────────────────────────────────
+    winning = [t for t in trades if t['result'] == 'WIN']
+    losing = [t for t in trades if t['result'] == 'LOSS']
+    total_trades = len(trades)
+    win_rate = len(winning) / total_trades if total_trades > 0 else 0.0
+
+    # Max Drawdown
+    equity = np.array(equity_curve)
+    peak = np.maximum.accumulate(equity)
+    drawdown = (equity - peak) / peak
+    max_drawdown = abs(drawdown.min())
+
+    # Sharpe Ratio
+    returns = np.diff(equity) / equity[:-1]
+    sharpe = returns.mean() / returns.std() * np.sqrt(252) if returns.std() > 0 else 0.0
+
+    return BacktestResult(
+        total_trades=total_trades,
+        winning_trades=len(winning),
+        losing_trades=len(losing),
+        win_rate=win_rate,
+        total_pnl=balance - initial_balance,
+        max_drawdown=max_drawdown,
+        sharpe_ratio=sharpe
+    )
 ```
 
-#### ระดับที่ 2 — Pattern Detection (ปานกลาง)
+### 9.5 Python Code ตัวอย่าง: Risk Management
+
 ```python
-# เพิ่ม Pattern Recognition
-from ta.trend import ADXIndicator
-from ta.volume import OnBalanceVolumeIndicator
+"""
+src/ai/risk_manager.py
+──────────────────────
+ระบบบริหารความเสี่ยง — Position Sizing, Stop Loss, Drawdown Protection
+"""
 
-# ตรวจจับ Candlestick Patterns
-def detect_engulfing(candles):
-    # ตรวจ engulfing pattern
-    pass
+import numpy as np
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class RiskParams:
+    """พารามิเตอร์ความเสี่ยง"""
+    account_size: float
+    max_risk_per_trade: float = 0.02      # 2% ต่อสถานะ
+    max_daily_risk: float = 0.05          # 5% ต่อวัน
+    max_total_drawdown: float = 0.20      # 20% สูงสุด
+    kelly_fraction: float = 0.25          # ใช้ Quarter Kelly
+
+
+def calculate_position_size(
+    entry_price: float,
+    stop_loss: float,
+    risk_params: RiskParams,
+    atr: Optional[float] = None,
+) -> dict:
+    """
+    คำนวณขนาดสถานะตามหลัก Risk Management
+
+    วิธีการ:
+      1. Fixed Percentage — ใช้ % ของบัญชีโดยตรง
+      2. ATR-Based — ใช้ ATR กำหนดระยะ Stop
+      3. Kelly Criterion — ใช้สูตร Kelly คำนวณ
+    """
+    risk_amount = risk_params.account_size * risk_params.max_risk_per_trade
+
+    # ── วิธีที่ 1: Fixed Percentage ───────────────────────────
+    # Stop ห่างจาก entry เป็น %
+    stop_distance_pct = abs(entry_price - stop_loss) / entry_price
+    fixed_size = risk_amount / stop_distance_pct
+
+    # ── วิธีที่ 2: ATR-Based (ดีกว่าเพราะปรับตามความผันผวน) ─────
+    if atr is not None:
+        atr_size = risk_amount / (1.5 * atr)  # SL = 1.5 × ATR
+    else:
+        atr_size = fixed_size
+
+    # ── วิธีที่ 3: Kelly Criterion ───────────────────────────
+    # f* = (b × p - q) / b
+    # สมมติ win rate = 40%, reward:risk = 2:1
+    win_rate = 0.40
+    reward_risk = 2.0
+    kelly_pct = (reward_risk * win_rate - (1 - win_rate)) / reward_risk
+    kelly_size = risk_params.account_size * (kelly_pct * risk_params.kelly_fraction)
+
+    # ใช้ค่าที่น้อยที่สุด (ปลอดภัยที่สุด)
+    recommended_size = min(fixed_size, atr_size, kelly_size)
+
+    return {
+        "fixed_percentage_size": fixed_size,
+        "atr_based_size": atr_size,
+        "kelly_size": kelly_size,
+        "recommended_size": recommended_size,
+        "risk_amount": risk_amount,
+        "stop_distance_pct": stop_distance_pct * 100,
+        "recommended_units": recommended_size / entry_price,
+    }
+
+
+def calculate_kelly_fraction(win_rate: float, reward_risk: float) -> float:
+    """
+    คำนวณ Kelly Percentage สำหรับ position sizing
+
+    Formula: f* = (b × p - q) / b
+      b = reward/risk ratio
+      p = win rate (ความน่าจะเป็นชนะ)
+      q = 1 - p
+
+    ควรใช้ Half หรือ Quarter Kelly ในทางปฏิบัติ
+    """
+    b = reward_risk
+    p = win_rate
+    q = 1 - p
+
+    kelly = (b * p - q) / b
+    half_kelly = kelly / 2
+    quarter_kelly = kelly / 4
+
+    return {
+        "full_kelly": kelly,
+        "half_kelly": half_kelly,
+        "quarter_kelly": quarter_kelly,
+        "max_position_pct": kelly * 100,
+        "safe_position_pct": quarter_kelly * 100,
+    }
+
+
+def calculate_drawdown_protection(
+    current_balance: float,
+    peak_balance: float,
+    risk_params: RiskParams
+) -> dict:
+    """
+    ตรวจสอบว่า Drawdown เกินขีดจำกัดหรือยัง
+    ถ้าเกิน → ลดขนาดสถานะหรือหยุดเทรด
+    """
+    current_dd = (peak_balance - current_balance) / peak_balance
+
+    # ถ้า Drawdown เกิน 10% → ลดขนาดสถานะลงครึ่งหนึ่ง
+    if current_dd > 0.10:
+        size_multiplier = 0.5
+        action = "REDUCE_POSITION"
+    else:
+        size_multiplier = 1.0
+        action = "NORMAL"
+
+    # ถ้า Drawdown เกิน 20% → หยุดเทรดชั่วคราว
+    if current_dd >= risk_params.max_total_drawdown:
+        action = "STOP_TRADING"
+        size_multiplier = 0.0
+
+    return {
+        "current_drawdown_pct": current_dd * 100,
+        "max_drawdown_pct": risk_params.max_total_drawdown * 100,
+        "action": action,
+        "size_multiplier": size_multiplier,
+        "should_stop": action == "STOP_TRADING",
+    }
+
+
+def calculate_risk_reward(
+    entry_price: float,
+    stop_loss: float,
+    take_profit: float,
+    side: str = "long"
+) -> dict:
+    """
+    คำนวณ Risk:Reward Ratio และ Win Rate ที่คุ้มทุน
+    """
+    if side == "long":
+        risk = entry_price - stop_loss
+        reward = take_profit - entry_price
+    else:  # short
+        risk = stop_loss - entry_price
+        reward = entry_price - take_profit
+
+    rr_ratio = reward / risk if risk > 0 else 0
+    breakeven_winrate = 1 / (1 + rr_ratio)
+
+    return {
+        "risk": risk,
+        "reward": reward,
+        "risk_reward_ratio": rr_ratio,
+        "breakeven_winrate": breakeven_winrate,
+        "breakeven_winrate_pct": breakeven_winrate * 100,
+    }
 ```
 
-#### ระดับที่ 3 — ML Model (ยาก)
-```python
-# เพิ่ม LSTM Model
-import torch
+### 9.6 โครงสร้างไฟล์ทั้งหมดของโปรเจกต์
 
-model = LSTMModel(input_size=10, hidden_size=64, num_layers=2)
-prediction = model(X_train)
+```
+auto-trade-ai/
+├── main.py                          # Entry point
+├── requirements.txt
+├── config/
+│   └── settings.yaml
+├── data/
+│   └── trades.db                    # SQLite
+│
+├── src/
+│   ├── __init__.py
+│   ├── core/
+│   │   ├── models.py                # Trade, TradeSignal dataclasses
+│   │   ├── paper_trader.py          # Paper trading engine
+│   │   ├── trade_logger.py          # Database logger
+│   │   └── risk_manager.py          # Risk management (NEW)
+│   │
+│   ├── crypto/
+│   │   └── exchange.py              # CCXT wrapper
+│   │
+│   ├── gold/
+│   │   └── price_feed.py           # Gold price feed
+│   │
+│   └── ai/
+│       ├── signal_generator.py      # ตัวเดิม (LLM-based)
+│       ├── signal_generator_v2.py   # ตัวใหม่ (Technical + LLM) (NEW)
+│       ├── technical_indicators.py  # Indicators ทั้งหมด (NEW)
+│       ├── pattern_detector.py      # Candlestick Pattern Detection (NEW)
+│       └── backtester.py           # Backtesting Engine (NEW)
+│
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── PriceChart.tsx       # Candlestick + Drawing tools
+│       │   ├── EquityCurve.tsx      # Equity chart
+│       │   └── PnLChart.tsx        # P&L chart
+│       └── app/
+│           ├── page.tsx             # Dashboard
+│           ├── analysis/page.tsx   # Analysis page
+│           ├── history/page.tsx     # Trade history
+│           ├── trade/page.tsx      # Paper trade
+│           └── settings/page.tsx   # Settings
+│
+└── docs/
+    └── technical-analysis-deep-dive.md  # เอกสารนี้
 ```
 
-### 9.3 Tech Stack ที่แนะนำ
+### 9.7 วิธีติดตั้ง Dependencies
 
-| ส่วน | เครื่องมือ |
-|------|-----------|
-| **Data** | pandas, numpy, CCXT |
-| **Indicators** | ta-lib / ta |
-| **ML/DL** | PyTorch, TensorFlow, scikit-learn |
-| **Pattern Detection** | CNN (PyTorch), OpenCV |
-| **LLM Integration** | OpenAI API, Claude API |
-| **Backtesting** | backtrader, vectorbt |
-| **Real-time Data** | CCXT, WebSocket |
-| **Database** | SQLite, PostgreSQL |
-| **Frontend** | Next.js, lightweight-charts, recharts |
+```bash
+# ติดตั้ง Python dependencies สำหรับ Technical Analysis
+pip install ta pandas numpy
 
-### 9.4 ขั้นตอนการพัฒนา
+# สำหรับ Machine Learning (ถ้าต้องการ)
+pip install torch scikit-learn
+
+# สำหรับ Backtesting
+pip install backtrader vectorbt
+
+# ถ้าใช้ ta-lib (เร็วกว่า ta แต่ต้องติดตั้ง C library ก่อน)
+# pip install ta-lib
+```
+
+### 9.8 ขั้นตอนการทดสอบ
+
+```bash
+# 1. รัน Backtest
+python -c "
+from src.ai.backtester import backtest_strategy, SignalGenerator
+from src.ai.technical_indicators import calculate_all_indicators
+import pandas as pd
+
+# สร้างข้อมูลเทียบ (หรือดึงจาก CCXT)
+df = pd.read_csv('data/btc_usdt_1h.csv')
+
+generator = SignalGenerator('BTC/USDT')
+result = backtest_strategy(df, generator)
+
+print(result)
+"
+
+# 2. ดู Signal ล่าสุด
+python -c "
+from src.ai.signal_generator_v2 import SignalGenerator
+import ccxt
+
+exchange = ccxt.binance()
+ candles = exchange.fetch_ohlcv('BTC/USDT', '1h', limit=500)
+df = pd.DataFrame(candles, columns=['timestamp','open','high','low','close','volume'])
+
+generator = SignalGenerator('BTC/USDT')
+signal = generator.generate(df)
+
+print(f'Signal: {signal.signal.value}')
+print(f'Confidence: {signal.confidence:.2%}')
+print(f'Reasons: {signal.reasons}')
+print(f'Indicators: {signal.indicators}')
+"
+```
+
+### 9.9 Tech Stack ที่แนะนำ
+
+### 9.10 ขั้นตอนการพัฒนา
 
 ```
 Phase 1: Technical Indicators
