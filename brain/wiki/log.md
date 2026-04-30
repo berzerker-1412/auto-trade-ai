@@ -7,6 +7,44 @@ Format: `## [YYYY-MM-DD HH:MM] <operation> | <title>`
 
 ---
 
+## [2026-05-01 01:05] update | Separate PAPER/LIVE wallets + real data
+
+**Refactored trading system:**
+
+1. **Wallet separation:**
+   - `WalletType` enum: `PAPER` / `LIVE`
+   - `Wallet` dataclass: balance, initial_balance, pnl
+   - `WalletManager`: แยกกระเป๋าสองใบ `paper_wallet` + `live_wallet`
+   - `Trader` class ใหม่ รองรับทั้ง PAPER และ LIVE ผ่าน wallet_type parameter
+   - `LiveExchangeTrader`: real orders ผ่าน CCXT (Binance)
+
+2. **Real data:**
+   - `GoldPriceFeed`: Alpha Vantage API เป็น default, demo fallback
+   - `CryptoExchange`: Binance จริง (testnet=true สำหรับ PAPER mode)
+   - ถอด mock ticker data ออกจาก API แล้ว
+
+3. **Database:** เพิ่ม `wallet_type` column ใน trades table + filter ทุก query
+
+4. **API updates:**
+   - `/api/wallets` — ดึงยอดทั้งสองกระเป๋า
+   - `/api/balance?wallet_type=paper|live` — ดึงยอดเฉพาะกระเป๋า
+   - `/api/stats?wallet_type=paper|live` — สถิติแยกตามกระเป๋า
+   - `/api/trades?wallet_type=paper|live` — filter ตามกระเป๋า
+
+5. **Files changed:**
+   - `backend/core/models.py` — WalletType, Wallet, wallet_type in Trade/TradeSignal
+   - `backend/core/wallet_manager.py` — NEW
+   - `backend/core/trader.py` — NEW (Trader base + PaperTrader compat)
+   - `backend/core/trade_logger.py` — wallet_type in DB + all queries
+   - `backend/core/paper_trader.py` — ยังอยู่ (backward compat)
+   - `backend/crypto/live_trader.py` — NEW
+   - `backend/gold/price_feed.py` — real API default
+   - `config/settings.yaml` — updated
+   - `api/server.py` — updated paths + wallet endpoints
+   - `main.py` — updated paths + wallet flag
+   - `brain/wiki/projects/auto-trade-ai/architecture.md` — updated
+   - `brain/wiki/projects/auto-trade-ai/index.md` — updated
+
 ## [2026-05-01 00:45] sync | Auto AI translation hook — wiki/ → wiki_th/
 
 **Setup:** `.git/hooks/post-commit` now auto-translates wiki/ changes to Thai using MiniMax-M2.5.

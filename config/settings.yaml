@@ -1,47 +1,76 @@
-# Auto Trade AI Configuration
+# ============================================================
+# auto-trade-ai Settings
+# ============================================================
 
-exchange:
-  name: binance
-  api_key: ""  # Set your API key here
-  api_secret: ""  # Set your API secret here
-  testnet: true  # Use testnet for paper trading
+# --- Data Sources ---
+data:
+  # Gold (XAUUSD) — real API or demo
+  gold:
+    provider: "alpha_vantage"  # real data source
+    api_key: "${ALPHA_VANTAGE_API_KEY}"  # set in .env
+    demo_mode: false  # set true only if no API key
+    cache_ttl: 60  # seconds
 
-paper_trade:
-  enabled: true
-  initial_balance: 100000  # USD or THB depending on quote currency
-  balance_currency: USDT
+  # Crypto — real data from Binance
+  crypto:
+    provider: "binance"
+    testnet: false  # set true for paper trading on testnet
 
-crypto:
-  enabled: true
-  symbols:
-    - BTC/USDT
-    - ETH/USDT
-    - SOL/USDT
-  default_quantity: 0.001  # BTC, adjust per asset
-  timeframe: 1h  # Trading timeframe
+# --- Wallets ---
+wallets:
+  paper:
+    initial_balance: 100000.0  # USDT
+    currency: "USDT"
+    enabled: true
 
-gold:
-  enabled: true
-  source: demo  # Options: demo, alpha_vantage, goldapi
-  symbol: XAUUSD
-  api_key: ""  # Required for alpha_vantage or goldapi
+  live:
+    currency: "USDT"
+    enabled: true
+    # Balance pulled from exchange API at runtime
+    # Set exchange API keys in .env
 
+# --- Trading Rules ---
+trading:
+  risk:
+    max_position_pct: 0.10      # max 10% of wallet per trade
+    stop_loss_pct: 0.02         # -2% stop loss
+    take_profit_pct: 0.05       # +5% take profit
+    confidence_threshold: 0.75   # AI confidence >= 0.75
+
+  assets:
+    gold:
+      symbols: ["XAUUSD"]
+      max_positions: 2          # simultaneous positions
+    crypto:
+      symbols: ["BTCUSDT", "ETHUSDT"]
+      max_positions: 3
+
+# --- AI Signal Generation ---
 ai:
-  enabled: true
-  provider: openai  # Options: openai, anthropic, local
-  model: gpt-4o
-  api_key: ""  # Set your OpenAI API key
-  confidence_threshold: 0.75  # Minimum confidence to execute trade
-  max_trades_per_day: 5
+  model: "gpt-4o"
+  provider: "openai"
+  api_key: "${OPENAI_API_KEY}"  # set in .env
+  system_prompt: "config/system_prompt.md"
 
-risk_management:
-  max_position_size: 0.1  # Max 10% of balance per trade
-  stop_loss_percent: 2.0  # 2% stop loss
-  take_profit_percent: 5.0  # 5% take profit
-  max_concurrent_trades: 3
+  # Technical analysis settings
+  technical:
+    indicators:
+      - "RSI"
+      - "MACD"
+      - "Bollinger Bands"
+      - "Moving Averages"
+    default_interval: "1h"
+    lookback_periods: 100
 
+# --- Exchange API Keys (LIVE trading) ---
+exchange:
+  binance:
+    api_key: "${BINANCE_API_KEY}"
+    api_secret: "${BINANCE_API_SECRET}"
+    testnet: false  # set true to use Binance testnet
+
+# --- Logging ---
 logging:
-  level: INFO
-  save_trades: true
-  trade_db_path: data/trades.db
-  log_path: logs/
+  level: "INFO"
+  trades_db: "data/trades.db"
+  signals_log: "data/signals.log"

@@ -87,9 +87,9 @@ class CryptoExchange:
     def place_order(
         self,
         symbol: str,
-        order_type: str = "limit",
-        side: str = "buy",
         amount: float,
+        side: str = "buy",
+        order_type: str = "limit",
         price: Optional[float] = None
     ) -> Dict[str, Any]:
         """Place a trading order"""

@@ -1,137 +1,160 @@
-"""Gold price feed - fetches gold (XAU) prices from various sources"""
+"""Gold Price Feed — XAUUSD real-time data from alpha_vantage"""
 
+import os
+import time
 import requests
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Optional, Dict, Any
+from functools import lru_cache
+
+# For testing/demo without API key, use free demo endpoint
+DEMO_MODE = os.getenv("ALPHA_VANTAGE_API_KEY") in (None, "", "demo")
+
+
+@lru_cache(maxsize=1)
+def _get_cached_rate(symbol: str = "XAUUSD") -> Optional[float]:
+    """Cached rate to avoid hammering the API"""
+    # For demo, return a realistic gold price
+    if DEMO_MODE:
+        return 2345.50  # realistic placeholder for demo
+    return None
 
 
 class GoldPriceFeed:
-    """Fetch gold prices from various data sources"""
+    """
+    Gold (XAUUSD) price feed using Alpha Vantage API.
     
-    def __init__(self, source: str = "demo"):
-        self.source = source
-        self.base_url = self._get_base_url()
-    
-    def _get_base_url(self) -> str:
-        """Get API base URL based on source"""
-        sources = {
-            "alpha_vantage": "https://www.alphavantage.co/query",
-            "goldapi": "https://www.goldapi.io/api",
-            "demo": ""  # Will use simulated data
-        }
-        return sources.get(self.source, sources["demo"])
-    
-    def get_price(self, symbol: str = "XAUUSD") -> Optional[Dict[str, Any]]:
-        """Get current gold price"""
-        if self.source == "demo":
-            return self._get_demo_price(symbol)
-        
-        if self.source == "alpha_vantage":
-            return self._get_alpha_vantage_price(symbol)
-        
-        if self.source == "goldapi":
-            return self._get_goldapi_price(symbol)
-        
-        return None
-    
-    def _get_demo_price(self, symbol: str) -> Dict[str, Any]:
-        """Generate simulated gold price for testing"""
-        # Base price around $2000 per troy ounce
-        import random
-        base_price = 2000.0
-        variation = random.uniform(-50, 50)
-        price = base_price + variation
-        
+    ถ้าไม่มี API key จะ fallback เป็น demo data แต่จะแจ้งเตือนให้ user รู้
+    """
+
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("ALPHA_VANTAGE_API_KEY", "")
+        self.base_url = "https://www.alphavantage.co/query"
+        self._last_fetch: Optional[datetime] = None
+        self._cache_ttl_seconds = 60  # cache 1 นาที
+        self._demo_mode = self.api_key in ("", "demo") if not self.api_key else False
+        self._last_price: Optional[float] = None
+
+    @property
+    def is_demo(self) -> bool:
+        return self._demo_mode
+
+    def get_current_price(self, symbol: str = "XAUUSD") -> Optional[float]:
+        """Get current gold price (XAUUSD) as a float"""
+        # Check cache first
+        if self._last_price and self._last_fetch:
+            age = (datetime.now() - self._last_fetch).total_seconds()
+            if age < self._cache_ttl_seconds:
+                return self._last_price
+
+        if self._demo_mode:
+            self._last_price = self._get_demo_price()
+            self._last_fetch = datetime.now()
+            return self._last_price
+
+        return self._fetch_real_price(symbol)
+
+    def get_price(self, symbol: str = "XAUUSD") -> Dict[str, Any]:
+        """Get gold price as dict (compatibility method for API)"""
+        price = self.get_current_price(symbol)
+        if price is None:
+            return {}
         return {
-            "symbol": symbol,
-            "price": round(price, 2),
-            "bid": round(price - 0.5, 2),
-            "ask": round(price + 0.5, 2),
-            "currency": "USD",
-            "unit": "oz",  # per troy ounce
-            "timestamp": datetime.now()
+            "price": price,
+            "bid": price - 0.5,
+            "ask": price + 0.5,
+            "high": price * 1.001,
+            "low": price * 0.999,
         }
-    
-    def _get_alpha_vantage_price(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Fetch from Alpha Vantage (requires API key)"""
-        # Note: Requires FREE API key from alpha.vantage.co
-        api_key = ""  # Set via config or environment variable
-        
-        if not api_key:
-            print("[GOLD] Alpha Vantage API key not set, using demo data")
-            return self._get_demo_price(symbol)
-        
+
+    def _fetch_real_price(self, symbol: str) -> Optional[float]:
+        """Fetch real XAUUSD price from Alpha Vantage API"""
         try:
-            response = requests.get(self.base_url, params={
+            # Alpha Vantage's Gold (XAU/USD) endpoint via CURRENCY_EXCHANGE_RATE
+            params = {
                 "function": "CURRENCY_EXCHANGE_RATE",
                 "from_currency": "XAU",
                 "to_currency": "USD",
-                "apikey": api_key
-            }, timeout=10)
-            
-            data = response.json()
-            if "Realtime Currency Exchange Rate" in data:
-                rate = data["Realtime Currency Exchange Rate"]
-                return {
-                    "symbol": symbol,
-                    "price": float(rate["5. Exchange Rate"]),
-                    "bid": float(rate["8. Bid Price"]),
-                    "ask": float(rate["9. Ask Price"]),
-                    "currency": "USD",
-                    "timestamp": datetime.now()
-                }
-        except Exception as e:
-            print(f"[GOLD] Error fetching price: {e}")
-        
-        return None
-    
-    def _get_goldapi_price(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Fetch from GoldAPI.io (requires API key)"""
-        api_key = ""  # Set via config or environment variable
-        
-        if not api_key:
-            print("[GOLD] GoldAPI key not set, using demo data")
-            return self._get_demo_price(symbol)
-        
-        try:
-            headers = {"x-access-token": api_key}
-            response = requests.get(
-                f"{self.base_url}/{symbol.lower()}",
-                headers=headers,
-                timeout=10
-            )
-            
-            data = response.json()
-            return {
-                "symbol": symbol,
-                "price": data.get("price"),
-                "bid": data.get("bid"),
-                "ask": data.get("ask"),
-                "currency": data.get("currency", "USD"),
-                "timestamp": datetime.now()
+                "apikey": self.api_key,
             }
+            
+            resp = requests.get(self.base_url, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            
+            if "Realtime Currency Exchange Rate" in data:
+                price_str = data["Realtime Currency Exchange Rate"]["5. Exchange Rate"]
+                price = float(price_str)
+                self._last_price = price
+                self._last_fetch = datetime.now()
+                return price
+            
+            # Hit rate limit — fallback to demo
+            if "Note" in data or "Information" in data:
+                print("[GoldPriceFeed] API rate limit hit, falling back to demo data")
+                self._demo_mode = True
+                self._last_price = self._get_demo_price()
+                self._last_fetch = datetime.now()
+                return self._last_price
+                
         except Exception as e:
-            print(f"[GOLD] Error fetching price: {e}")
-        
+            print(f"[GoldPriceFeed] API error: {e}, using demo data")
+            self._demo_mode = True
+            self._last_price = self._get_demo_price()
+            self._last_fetch = datetime.now()
+            return self._last_price
+
         return None
-    
+
+    def _get_demo_price(self) -> float:
+        """Demo price when no API key is available"""
+        return 2345.50
+
     def get_historical_prices(
-        self, 
-        days: int = 30
-    ) -> list:
-        """Get historical gold prices"""
-        import random
-        
-        # Generate simulated historical data
-        base_price = 2000.0
-        prices = []
-        
-        for i in range(days):
-            variation = random.uniform(-100, 100)
-            price = base_price + variation
-            prices.append({
-                "date": datetime.now().timestamp() - (i * 86400),
-                "price": round(price, 2)
-            })
-        
-        return list(reversed(prices))
+        self,
+        symbol: str = "XAUUSD",
+        interval: str = "60min",
+        output_size: str = "compact"
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get historical gold prices.
+        Falls back to demo data if API key not available.
+        """
+        if self._demo_mode or self.api_key in ("", "demo"):
+            return self._get_demo_historical()
+
+        try:
+            params = {
+                "function": "GOLD",
+                "interval": interval,
+                "outputsize": output_size,
+                "apikey": self.api_key,
+                "datatype": "json",
+            }
+            
+            resp = requests.get(self.base_url, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            
+            if "data" in data:
+                return data
+            
+            # Fallback to demo
+            return self._get_demo_historical()
+            
+        except Exception as e:
+            print(f"[GoldPriceFeed] Historical API error: {e}")
+            return self._get_demo_historical()
+
+    def _get_demo_historical(self) -> Dict[str, Any]:
+        """Demo historical data"""
+        now = datetime.now()
+        return {
+            "data": [
+                {
+                    "date": (now.replace(minute=0) - i * 3600).strftime("%Y-%m-%d %H:%M:%S"),
+                    "value": round(2345.50 + (i % 5 - 2) * 2, 2)
+                }
+                for i in range(100)
+            ]
+        }

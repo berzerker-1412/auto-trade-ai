@@ -50,19 +50,25 @@ auto-trade-ai/
 │   ├── ai/
 │   │   └── signal_generator.py     ← AI signal generation (GPT-4o)
 │   ├── crypto/
-│   │   └── exchange.py            ← CCXT wrapper for crypto exchanges
+│   │   ├── exchange.py            ← CCXT wrapper for crypto exchanges
+│   │   └── live_trader.py         ← LIVE trader via CCXT (real orders)
 │   ├── gold/
-│   │   └── price_feed.py          ← Gold price (XAUUSD) from multiple sources
+│   │   └── price_feed.py          ← Gold price (XAUUSD) from Alpha Vantage
 │   └── core/
-│       ├── models.py              ← TradeSignal, Trade, TradeResult dataclasses
-│       ├── paper_trader.py        ← Paper trading engine
+│       ├── models.py              ← TradeSignal, Trade, TradeResult, Wallet
+│       ├── trader.py              ← Trader (PAPER + LIVE) + PaperTrader compat
+│       ├── wallet_manager.py      ← WalletManager: แยก PAPER/LIVE wallets
 │       └── trade_logger.py        ← SQLite trade database
 ├── frontend/                       ← Next.js web UI
-├── config/settings.yaml            ← All configuration
-├── data/trades.db                  ← SQLite trade history
+├── api/
+│   └── server.py                   ← FastAPI (port 8000)
+├── config/
+│   └── settings.yaml              ← All configuration
+├── data/
+│   └── trades.db                   ← SQLite trade history
 ├── docs/
 │   └── technical-analysis-deep-dive.md  ← Thai TA guide (candlesticks, patterns)
-└── requirements.txt
+└── main.py                         ← CLI entry point
 ```
 
 ---
@@ -102,9 +108,10 @@ Trade Logger (SQLite)
 
 ---
 
-## AI Signal Generation
+## AI Signal Generation — MiniMax
 
-**Prompt输入:**
+- [[backend/ai/signal_generator.py]] — `AISignalGenerator` สร้างสัญญาณเทรดจาก MiniMax (OpenAI-compatible API)
+- [[backend/ai/minimax_client.py]] — `MiniMaxChatClient` wrapper
 - Current price, 24h high/low, volume
 - Technical analysis output
 - Optional news
@@ -125,15 +132,30 @@ Trade Logger (SQLite)
 ## Asset Classes
 
 ### Crypto (via CCXT)
-- Binance testnet by default
+- **Real exchange** (Binance) by default — testnet only for PAPER mode
 - Supports 100+ exchanges
 - Symbols: BTC/USDT, ETH/USDT, SOL/USDT
 - OHLCV data, ticker data, order execution
 
 ### Gold (XAU/USD)
-- Demo mode (simulated ~$2000/oz)
-- Alpha Vantage API (real data, needs API key)
-- GoldAPI.io (real data, needs API key)
+- **Real data via Alpha Vantage API** — default (needs API key)
+- **Demo fallback** — if no API key or rate limit hit
+- Real-time XAUUSD price
+
+---
+
+## Wallet Separation
+
+**PAPER wallet** — simulated balance (default 100,000 USDT)
+- No real money involved
+- Used for testing strategies before going live
+
+**LIVE wallet** — real exchange balance
+- Balance pulled from Binance via CCXT
+- Real orders executed on the exchange
+- Real P&L reflected in actual account balance
+
+Both wallets tracked separately in the same `trades.db` with `wallet_type` column.
 
 ---
 

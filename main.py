@@ -6,6 +6,7 @@ Usage:
     python main.py --mode paper --asset crypto
     python main.py --mode live --asset crypto
     python main.py --mode paper --asset gold
+    python main.py --mode live --asset both --wallet live
 """
 
 import argparse
@@ -13,14 +14,15 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add backend to path
+sys.path.insert(0, str(Path(__file__).parent))
 
-from src.core.paper_trader import PaperTrader
-from src.crypto.exchange import CryptoExchange
-from src.gold.price_feed import GoldPriceFeed
-from src.ai.signal_generator import AISignalGenerator
-from src.core.models import AssetType
+from backend.core.trader import Trader
+from backend.core.wallet_manager import WalletManager
+from backend.core.models import AssetType, WalletType
+from backend.crypto.exchange import CryptoExchange
+from backend.gold.price_feed import GoldPriceFeed
+from backend.ai.signal_generator import AISignalGenerator
 
 
 def parse_args():
@@ -48,6 +50,12 @@ def parse_args():
         default=100000,
         help="Initial balance for paper trading"
     )
+    parser.add_argument(
+        "--wallet",
+        choices=["paper", "live"],
+        default="paper",
+        help="Wallet type: paper (simulated) or live (real exchange)"
+    )
     return parser.parse_args()
 
 
@@ -57,17 +65,24 @@ def run_crypto_trader(args):
     print("CRYPTO TRADER - Auto Trade AI")
     print(f"{'='*50}")
     print(f"Mode: {'PAPER TRADE' if args.mode == 'paper' else 'LIVE TRADING'}")
+    print(f"Wallet: {args.wallet.upper()}")
     
-    # Initialize exchange
-    exchange = CryptoExchange(testnet=(args.mode == "paper"))
+    # Initialize WalletManager — แยกกระเป๋าตัง PAPER กับ LIVE
+    wm = WalletManager(paper_initial=args.balance)
+    wallet_type = WalletType.LIVE if args.wallet == "live" else WalletType.PAPER
+
+    # Initialize exchange — testnet สำหรับ PAPER, real สำหรับ LIVE
+    exchange = CryptoExchange(testnet=(args.wallet == "paper"))
     
     # Initialize AI
     ai = AISignalGenerator()
     
-    # Initialize paper trader
-    if args.mode == "paper":
-        trader = PaperTrader(initial_balance=args.balance)
-        print(f"Initial Balance: {args.balance} USDT")
+    # Initialize trader with wallet type
+    trader = Trader(
+        wallet_manager=wm,
+        wallet_type=wallet_type,
+    )
+    print(f"Initial Balance: {args.balance} USDT")
     
     # Get supported symbols
     symbols = [args.symbol] if args.symbol else ["BTC/USDT", "ETH/USDT"]
@@ -104,27 +119,20 @@ def run_crypto_trader(args):
                     print(f"  Signal: {signal.direction.value.upper()} "
                           f"(confidence: {signal.confidence:.0%})")
                     
-                    if args.mode == "paper":
-                        # Execute in paper mode
-                        if signal.direction.value == "buy":
-                            trade = trader.execute_signal(signal)
-                        else:
-                            # Close existing position
-                            trader.close_trade(symbol, ticker.get("last"))
+                    if signal.direction.value == "buy":
+                        trade = trader.execute_signal(signal)
                     else:
-                        # Live trading would execute here
-                        print(f"  Would execute: {signal.direction.value} "
-                              f"{signal.quantity} @ {signal.entry_price}")
+                        # Close existing position
+                        trader.close_trade(symbol, ticker.get("last"))
             
             asyncio.sleep(10)  # Check every 10 seconds
             
     except KeyboardInterrupt:
         print("\n\nStopping trader...")
-        if args.mode == "paper":
-            stats = trader.get_stats()
-            print(f"\nFinal Balance: {stats['current_balance']}")
-            print(f"Total Trades: {stats['total_trades']}")
-            print(f"Win Rate: {stats['win_rate']}")
+        stats = trader.get_stats()
+        print(f"\nFinal Balance: {stats['current_balance']} USDT")
+        print(f"Total Trades: {stats['total_trades']}")
+        print(f"Win Rate: {stats['win_rate']}")
 
 
 def run_gold_trader(args):
@@ -133,17 +141,24 @@ def run_gold_trader(args):
     print("GOLD TRADER - Auto Trade AI")
     print(f"{'='*50}")
     print(f"Mode: {'PAPER TRADE' if args.mode == 'paper' else 'LIVE TRADING'}")
+    print(f"Wallet: {args.wallet.upper()}")
     
-    # Initialize gold price feed
-    gold = GoldPriceFeed(source="demo")  # Change to alpha_vantage or goldapi
+    # Initialize gold price feed — ใช้ real API (alpha_vantage)
+    gold = GoldPriceFeed()
     
+    # Initialize WalletManager
+    wm = WalletManager(paper_initial=args.balance)
+    wallet_type = WalletType.LIVE if args.wallet == "live" else WalletType.PAPER
+
     # Initialize AI
     ai = AISignalGenerator()
     
-    # Initialize paper trader
-    if args.mode == "paper":
-        trader = PaperTrader(initial_balance=args.balance)
-        print(f"Initial Balance: ${args.balance}")
+    # Initialize trader
+    trader = Trader(
+        wallet_manager=wm,
+        wallet_type=wallet_type,
+    )
+    print(f"Initial Balance: ${args.balance}")
     
     symbol = "XAUUSD"
     print(f"\nMonitoring: GOLD ({symbol})")
@@ -166,17 +181,16 @@ def run_gold_trader(args):
                     print(f"  Signal: {signal.direction.value.upper()} "
                           f"(confidence: {signal.confidence:.0%})")
                     
-                    if args.mode == "paper" and signal.direction.value == "buy":
+                    if signal.direction.value == "buy":
                         trade = trader.execute_signal(signal)
             
             asyncio.sleep(15)  # Check every 15 seconds
             
     except KeyboardInterrupt:
         print("\n\nStopping trader...")
-        if args.mode == "paper":
-            stats = trader.get_stats()
-            print(f"\nFinal Balance: ${stats['current_balance']}")
-            print(f"Total Trades: {stats['total_trades']}")
+        stats = trader.get_stats()
+        print(f"\nFinal Balance: ${stats['current_balance']}")
+        print(f"Total Trades: {stats['total_trades']}")
 
 
 def main():
@@ -185,7 +199,7 @@ def main():
     if args.asset in ["crypto", "both"]:
         run_crypto_trader(args)
     
-    if args.asset in ["gold", "both"] and args.asset != "both":
+    if args.asset in ["gold", "both"]:
         run_gold_trader(args)
 
 

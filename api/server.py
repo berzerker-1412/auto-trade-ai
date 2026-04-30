@@ -70,6 +70,7 @@ class TraderStartRequest(BaseModel):
     asset: str = Field(default="both", description="crypto, gold, หรือ both")
     symbols: list[str] = Field(default=["BTC/USDT", "ETH/USDT", "XAUUSD"])
     balance: float = Field(default=100000, description="initial balance สำหรับ paper mode")
+    wallet_type: str = Field(default="paper", description="paper หรือ live — กระเป๋าตังที่จะใช้")
 
 class TradeCloseRequest(BaseModel):
     symbol: str
@@ -82,6 +83,7 @@ class ManualTradeRequest(BaseModel):
     entry_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+    wallet_type: str = Field(default="paper", description="paper หรือ live")
 
 class SettingsUpdateRequest(BaseModel):
     max_position_size: Optional[float] = None
@@ -109,6 +111,7 @@ def init_trades_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL,
                 asset_type TEXT NOT NULL,
+                wallet_type TEXT NOT NULL DEFAULT 'paper',
                 direction TEXT NOT NULL,
                 entry_price REAL,
                 exit_price REAL,
@@ -128,6 +131,10 @@ def init_trades_db():
                 key TEXT PRIMARY KEY,
                 value TEXT
             )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trades_wallet_type 
+            ON trades(wallet_type)
         """)
         # default settings
         defaults = {
@@ -187,16 +194,33 @@ class TraderState:
     def _run_loop(self):
         """Background loop ที่ทำหน้าที่ auto-trader"""
         # Import ที่นี่เพื่อหลีกเลี่ยง circular import
-        from backend.core.paper_trader import PaperTrader
+        from backend.core.trader import Trader
+        from backend.core.wallet_manager import WalletManager
+        from backend.core.models import WalletType
         from backend.crypto.exchange import CryptoExchange
         from backend.gold.price_feed import GoldPriceFeed
         from backend.ai.signal_generator import AISignalGenerator
         from backend.core.models import AssetType
 
-        trader = PaperTrader(initial_balance=self.balance)
+        is_live = self.mode == "live"
+
+        # สร้าง WalletManager แยกกระเป๋าตัง
+        wm = WalletManager(paper_initial=self.balance)
+        wallet_type = WalletType.LIVE if is_live else WalletType.PAPER
+
+        # ถ้า LIVE ใช้ real exchange, ถ้า PAPER ใช้ testnet
+        exchange = CryptoExchange(testnet=not is_live)
+
+        # Gold ใช้ real API เสมอ (demo เฉพาะถ้า API key ไม่มีจริง)
+        gold = GoldPriceFeed()
+
+        # สร้าง Trader ตาม wallet type
+        trader = Trader(
+            wallet_manager=wm,
+            db_path=str(TRADES_DB),
+            wallet_type=wallet_type,
+        )
         ai = AISignalGenerator()
-        exchange = CryptoExchange(testnet=(self.mode == "paper"))
-        gold = GoldPriceFeed(source="demo")
 
         symbols_to_trade = self.symbols
         news_signal_cache = None  # เก็บ news signal ไว้ใช้รอบนึง
@@ -329,15 +353,30 @@ async def get_trader_stats():
 
 # ── Balance ────────────────────────────────────────────────
 @app.get("/api/balance")
-async def get_balance():
-    status = trader_state.get_status()
+async def get_balance(wallet_type: str = "paper"):
+    """ดึงยอดกระเป๋าตัง — เลือก wallet_type ได้ (paper หรือ live)"""
+    from backend.core.wallet_manager import WalletManager
+    from backend.core.models import WalletType
+
+    wtype = WalletType.LIVE if wallet_type == "live" else WalletType.PAPER
+    wm = WalletManager()
+    wallet = wm.get_wallet(wtype)
+
     return {
-        "balance": status["balance"],
-        "currency": "USDT",
-        "initial_balance": status["initial_balance"],
-        "total_pnl": status["balance"] - status["initial_balance"],
-        "active_trades": _count_open_trades(),
+        "wallet_type": wtype.value,
+        "balance": wallet.balance,
+        "currency": wallet.currency,
+        "initial_balance": wallet.initial_balance,
+        "pnl": wallet.pnl,
     }
+
+@app.get("/api/wallets")
+async def get_all_wallets():
+    """ดึงยอดทั้งสองกระเป๋าตัง (PAPER + LIVE)"""
+    from backend.core.wallet_manager import WalletManager
+
+    wm = WalletManager()
+    return wm.get_summary()
 
 def _count_open_trades() -> int:
     with get_db() as conn:
@@ -346,58 +385,57 @@ def _count_open_trades() -> int:
 
 # ── Stats ──────────────────────────────────────────────────
 @app.get("/api/stats")
-async def get_stats():
-    with get_db() as conn:
-        conn.row_factory = sqlite3.Row
+async def get_stats(wallet_type: str = None):
+    """ดึงสถิติ trades — เลือก wallet_type ได้ (paper, live, หรือ None ทั้งหมด)"""
+    from backend.core.trade_logger import TradeLogger
+    from backend.core.models import WalletType
 
-        # Calculate P&L from exit_price - entry_price (direction-aware)
-        row = conn.execute("""
-            SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN (exit_price > entry_price AND direction = 'buy')
-                         OR (exit_price < entry_price AND direction = 'sell') THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN (exit_price < entry_price AND direction = 'buy')
-                         OR (exit_price > entry_price AND direction = 'sell') THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN (exit_price > entry_price AND direction = 'buy')
-                         OR (exit_price < entry_price AND direction = 'sell')
-                         THEN exit_price - entry_price
-                         ELSE entry_price - exit_price END) as total_pnl
-            FROM trades WHERE status = 'closed'
-        """).fetchone()
+    wtype = WalletType(wallet_type) if wallet_type in ("paper", "live") else None
 
-        total = row["total"] or 0
-        wins = row["wins"] or 0
-        losses = row["losses"] or 0
-        total_pnl = row["total_pnl"] or 0
+    logger = TradeLogger(str(TRADES_DB))
+    stats = logger.get_trade_stats(wallet_type=wtype)
 
-        status = trader_state.get_status()
-
-        return {
-            "total_trades": total,
-            "winning_trades": wins,
-            "losing_trades": losses,
-            "win_rate": f"{int(wins / total * 100)}%" if total > 0 else "0%",
-            "total_pnl": total_pnl,
-            "current_balance": status["balance"],
-        }
+    return {
+        "wallet_type": wtype.value if wtype else "all",
+        "total_trades": stats.total_trades,
+        "winning_trades": stats.winning_trades,
+        "losing_trades": stats.losing_trades,
+        "win_rate": f"{stats.win_rate:.1f}%",
+        "total_pnl": stats.total_pnl,
+    }
 
 # ── Trades ─────────────────────────────────────────────────
 @app.get("/api/trades")
-async def get_trades(limit: int = 50):
+async def get_trades(limit: int = 50, wallet_type: str = None):
+    wallet_filter = ""
+    params = [limit]
+    if wallet_type in ("paper", "live"):
+        wallet_filter = " AND wallet_type = ?"
+        params.insert(0, wallet_type)
+
     with get_db() as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT * FROM trades
+            WHERE 1=1{wallet_filter}
             ORDER BY id DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """, params).fetchall()
         return [_row_to_trade(r) for r in rows]
 
 @app.get("/api/trades/open")
-async def get_open_trades():
+async def get_open_trades(wallet_type: str = None):
+    wallet_filter = ""
+    params = []
+    if wallet_type in ("paper", "live"):
+        wallet_filter = " AND wallet_type = ?"
+        params.append(wallet_type)
+
     with get_db() as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT * FROM trades WHERE status = 'open'").fetchall()
+        rows = conn.execute(f"""
+            SELECT * FROM trades WHERE status = 'open'{wallet_filter}
+        """, params).fetchall()
         return [_row_to_trade(r) for r in rows]
 
 @app.post("/api/trades/close")
@@ -447,7 +485,7 @@ async def execute_trade(signal: dict):
     from backend.gold.price_feed import GoldPriceFeed
 
     if "XAU" in symbol:
-        gold = GoldPriceFeed(source="demo")
+        gold = GoldPriceFeed()
         price_data = gold.get_price(symbol)
         price = price_data.get("price")
         asset_type = "gold"
@@ -460,10 +498,11 @@ async def execute_trade(signal: dict):
     with get_db() as conn:
         trade_num = conn.execute("SELECT COALESCE(MAX(trade_number), 0) + 1 as next_num FROM trades").fetchone()["next_num"]
 
+        wallet_type = signal.get("wallet_type", "paper")
         conn.execute("""
-            INSERT INTO trades (symbol, asset_type, direction, entry_price, quantity, status, entry_time, trade_number)
-            VALUES (?, ?, ?, ?, ?, 'open', ?, ?)
-        """, (symbol, asset_type, direction, price, quantity, datetime.now().isoformat(), trade_num))
+            INSERT INTO trades (symbol, asset_type, wallet_type, direction, entry_price, quantity, status, entry_time, trade_number)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
+        """, (symbol, asset_type, wallet_type, direction, price, quantity, datetime.now().isoformat(), trade_num))
         conn.commit()
 
         row = conn.execute("SELECT * FROM trades ORDER BY id DESC LIMIT 1").fetchone()
@@ -477,7 +516,7 @@ async def create_manual_trade(req: ManualTradeRequest):
 
     symbol = req.symbol
     if "XAU" in symbol:
-        gold = GoldPriceFeed(source="demo")
+        gold = GoldPriceFeed()
         price_data = gold.get_price(symbol)
         entry_price = req.entry_price or price_data.get("price")
         asset_type = "gold"
@@ -490,11 +529,12 @@ async def create_manual_trade(req: ManualTradeRequest):
     with get_db() as conn:
         trade_num = conn.execute("SELECT COALESCE(MAX(trade_number), 0) + 1 as next_num FROM trades").fetchone()["next_num"]
 
+        wallet_type = req.wallet_type
         conn.execute("""
-            INSERT INTO trades (symbol, asset_type, direction, entry_price, quantity, stop_loss, take_profit, status, entry_time, trade_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+            INSERT INTO trades (symbol, asset_type, wallet_type, direction, entry_price, quantity, stop_loss, take_profit, status, entry_time, trade_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
         """, (
-            symbol, asset_type, req.direction,
+            symbol, asset_type, wallet_type, req.direction,
             entry_price, req.quantity,
             req.stop_loss, req.take_profit,
             datetime.now().isoformat(), trade_num,
@@ -509,6 +549,7 @@ def _row_to_trade(row: dict) -> dict:
         "id": row["id"],
         "symbol": row["symbol"],
         "asset_type": row["asset_type"],
+        "wallet_type": row.get("wallet_type", "paper"),
         "direction": row["direction"],
         "entry_price": row["entry_price"],
         "exit_price": row["exit_price"],
@@ -540,8 +581,10 @@ async def get_tickers():
         from backend.crypto.exchange import CryptoExchange
         from backend.gold.price_feed import GoldPriceFeed
 
-        exchange = CryptoExchange(testnet=True)
-        gold = GoldPriceFeed(source="demo")
+        # ใช้ real data — testnet ตาม mode ของ trader
+        mode = trader_state.mode
+        exchange = CryptoExchange(testnet=(mode == "paper"))
+        gold = GoldPriceFeed()
 
         for symbol in ["BTC/USDT", "ETH/USDT", "SOL/USDT"]:
             try:

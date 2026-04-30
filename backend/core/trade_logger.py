@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 from contextlib import contextmanager
 
-from .models import Trade, TradeStatus, TradeResult, AssetType, TradeDirection
+from .models import Trade, TradeStatus, TradeResult, AssetType, TradeDirection, WalletType
 
 
 class TradeLogger:
@@ -37,6 +37,7 @@ class TradeLogger:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     symbol TEXT NOT NULL,
                     asset_type TEXT NOT NULL,
+                    wallet_type TEXT NOT NULL DEFAULT 'paper',
                     direction TEXT NOT NULL,
                     entry_price REAL NOT NULL,
                     exit_price REAL,
@@ -59,19 +60,24 @@ class TradeLogger:
                 CREATE INDEX IF NOT EXISTS idx_trades_status 
                 ON trades(status)
             """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trades_wallet_type 
+                ON trades(wallet_type)
+            """)
     
     def log_trade(self, trade: Trade) -> int:
         """Log a new trade"""
         with self._get_conn() as conn:
             cursor = conn.execute("""
                 INSERT INTO trades (
-                    symbol, asset_type, direction, entry_price, exit_price,
+                    symbol, asset_type, wallet_type, direction, entry_price, exit_price,
                     quantity, stop_loss, take_profit, status,
                     entry_time, exit_time, trade_number
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade.symbol,
                 trade.asset_type.value,
+                trade.wallet_type.value,
                 trade.direction.value,
                 trade.entry_price,
                 trade.exit_price,
@@ -101,8 +107,12 @@ class TradeLogger:
                 trade.id
             ))
     
-    def get_open_trades(self, symbol: Optional[str] = None) -> List[Trade]:
-        """Get all open trades"""
+    def get_open_trades(
+        self,
+        symbol: Optional[str] = None,
+        wallet_type: Optional[WalletType] = None
+    ) -> List[Trade]:
+        """Get all open trades, optionally filtered"""
         query = "SELECT * FROM trades WHERE status = ?"
         params = [TradeStatus.OPEN.value]
         
@@ -110,25 +120,45 @@ class TradeLogger:
             query += " AND symbol = ?"
             params.append(symbol)
         
+        if wallet_type:
+            query += " AND wallet_type = ?"
+            params.append(wallet_type.value)
+        
         return self._rows_to_trades(query, params)
     
     def get_trade_history(
         self, 
         symbol: Optional[str] = None,
+        wallet_type: Optional[WalletType] = None,
         limit: int = 100
     ) -> List[Trade]:
-        """Get trade history"""
-        query = "SELECT * FROM trades ORDER BY created_at DESC LIMIT ?"
-        params = [limit]
+        """Get trade history, optionally filtered"""
+        query = "SELECT * FROM trades"
+        conditions = []
+        params = []
         
         if symbol:
-            query = "SELECT * FROM trades WHERE symbol = ? ORDER BY created_at DESC LIMIT ?"
-            params = [symbol, limit]
+            conditions.append("symbol = ?")
+            params.append(symbol)
+        
+        if wallet_type:
+            conditions.append("wallet_type = ?")
+            params.append(wallet_type.value)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
         
         return self._rows_to_trades(query, params)
     
-    def get_trade_stats(self, symbol: Optional[str] = None) -> TradeResult:
-        """Get trading statistics"""
+    def get_trade_stats(
+        self,
+        symbol: Optional[str] = None,
+        wallet_type: Optional[WalletType] = None
+    ) -> TradeResult:
+        """Get trading statistics, optionally filtered by symbol and/or wallet type"""
         query = """
             SELECT 
                 COUNT(*) as total,
@@ -137,7 +167,16 @@ class TradeLogger:
                          ELSE 0 END) as wins,
                 SUM(CASE WHEN exit_price < entry_price AND direction = 'buy' THEN 1
                          WHEN exit_price > entry_price AND direction = 'sell' THEN 1
-                         ELSE 0 END) as losses
+                         ELSE 0 END) as losses,
+                SUM(CASE WHEN exit_price > entry_price AND direction = 'buy'
+                         THEN exit_price - entry_price
+                         WHEN exit_price < entry_price AND direction = 'sell'
+                         THEN entry_price - exit_price
+                         WHEN exit_price < entry_price AND direction = 'buy'
+                         THEN entry_price - exit_price
+                         WHEN exit_price > entry_price AND direction = 'sell'
+                         THEN exit_price - entry_price
+                         ELSE 0 END) as total_pnl
             FROM trades
             WHERE status = 'closed'
         """
@@ -145,7 +184,11 @@ class TradeLogger:
         
         if symbol:
             query += " AND symbol = ?"
-            params = [symbol]
+            params.append(symbol)
+        
+        if wallet_type:
+            query += " AND wallet_type = ?"
+            params.append(wallet_type.value)
         
         with self._get_conn() as conn:
             row = conn.execute(query, params).fetchone()
@@ -153,17 +196,18 @@ class TradeLogger:
             result = TradeResult(
                 total_trades=row["total"] or 0,
                 winning_trades=row["wins"] or 0,
-                losing_trades=row["losses"] or 0
+                losing_trades=row["losses"] or 0,
+                total_pnl=row["total_pnl"] or 0.0,
             )
             result.calculate_metrics()
             return result
     
-    def get_next_trade_number(self, symbol: str) -> int:
-        """Get next trade number for a symbol (ไม้ที่เท่าไหร่)"""
+    def get_next_trade_number(self, symbol: str, wallet_type: WalletType) -> int:
+        """Get next trade number for a symbol within a specific wallet type"""
         with self._get_conn() as conn:
             row = conn.execute(
-                "SELECT MAX(trade_number) as last_num FROM trades WHERE symbol = ?",
-                (symbol,)
+                "SELECT MAX(trade_number) as last_num FROM trades WHERE symbol = ? AND wallet_type = ?",
+                (symbol, wallet_type.value)
             ).fetchone()
             return (row["last_num"] or 0) + 1
     
@@ -177,6 +221,7 @@ class TradeLogger:
                     id=row["id"],
                     symbol=row["symbol"],
                     asset_type=AssetType(row["asset_type"]),
+                    wallet_type=WalletType(row.get("wallet_type", "paper")),
                     direction=TradeDirection(row["direction"]),
                     entry_price=row["entry_price"],
                     exit_price=row["exit_price"],

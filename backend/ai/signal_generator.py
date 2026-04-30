@@ -1,36 +1,41 @@
-"""AI-powered trading signal generator"""
+"""AI-powered trading signal generator — ใช้ MiniMax เป็น AI provider"""
 
 import os
+import json
 from typing import Dict, Any, Optional, List
-from datetime import datetime
 
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-
+from .minimax_client import MiniMaxChatClient
 from ..core.models import TradeSignal, AssetType, TradeDirection
 
 
 class AISignalGenerator:
-    """Generate trading signals using AI"""
-    
+    """Generate trading signals using MiniMax AI"""
+
+    # Thai system prompt — AI ตอบเป็นภาษาไทยให้อ่านง่าย
+    SYSTEM_PROMPT = """คุณคือนักวิเคราะห์การเทรดมืออาชีพ
+วิเคราะห์ข้อมูลตลาด + sentiment ข่าว แล้วสร้างสัญญาณ BUY หรือ SELL ที่ชัดเจน
+ตอบเป็น JSON ที่มี: direction, entry_price, quantity, stop_loss, take_profit, confidence (0-1), reasoning"""
+
     def __init__(
         self,
-        model: str = "gpt-4",
+        model: Optional[str] = None,
         api_key: Optional[str] = None,
-        confidence_threshold: float = 0.70
+        base_url: Optional[str] = None,
+        confidence_threshold: float = 0.70,
     ):
-        self.model = model
+        self.model = model or os.getenv("MINIMAX_MODEL_NAME", "MiniMax-Text-01")
         self.confidence_threshold = confidence_threshold
-        
-        if OPENAI_AVAILABLE:
-            self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
-        else:
+
+        try:
+            self.client = MiniMaxChatClient(
+                api_key=api_key or os.getenv("MINIMAX_API_KEY", ""),
+                base_url=base_url or os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
+                model=self.model,
+            )
+        except ValueError as e:
             self.client = None
-            print("[AI] OpenAI not available, using fallback signal generation")
-    
+            print(f"[AI] MiniMax not available: {e}, using fallback signal generation")
+
     def generate_signal(
         self,
         symbol: str,
@@ -50,11 +55,11 @@ class AISignalGenerator:
                 - impacted_assets: list of asset tags
         """
         if self.client:
-            return self._generate_with_openai(symbol, asset_type, market_data, analysis, news_signal)
+            return self._generate_with_minimax(symbol, asset_type, market_data, analysis, news_signal)
         else:
             return self._generate_fallback(symbol, asset_type, market_data, news_signal)
 
-    def _generate_with_openai(
+    def _generate_with_minimax(
         self,
         symbol: str,
         asset_type: AssetType,
@@ -62,46 +67,48 @@ class AISignalGenerator:
         analysis: str,
         news_signal: Optional[Dict[str, Any]] = None,
     ) -> Optional[TradeSignal]:
-        """Generate signal using OpenAI with news intelligence"""
+        """Generate signal using MiniMax with news intelligence"""
         prompt = self._build_prompt(symbol, asset_type, market_data, analysis, news_signal)
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            response = self.client.chat.completions_create(
                 messages=[
-                    {
-                        "role": "system",
-                        "content": """You are a professional trading signal generator.
-                        Analyze market data AND news sentiment to generate clear BUY or SELL signals.
-                        Return JSON format with: direction, entry_price, quantity,
-                        stop_loss, take_profit, confidence (0-1), reasoning."""
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
+                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
                 ],
+                model=self.model,
                 temperature=0.3,
-                response_format={"type": "json_object"}
+                max_tokens=512,
+                response_format={"type": "json_object"},
             )
 
-            content = response.choices[0].message.content
-            data = eval(content)  # Safe here as we control the prompt
+            content = response["choices"][0]["message"]["content"]
+
+            # Parse JSON — handle potential markdown code blocks
+            content = content.strip()
+            if content.startswith("```"):
+                # Strip markdown code block wrapper
+                lines = content.split("\n")
+                content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
+            data = json.loads(content)
 
             if data.get("confidence", 0) >= self.confidence_threshold:
                 return TradeSignal(
                     asset_type=asset_type,
                     symbol=symbol,
-                    direction=TradeDirection.BUY if data["direction"].upper() == "BUY"
+                    direction=TradeDirection.BUY if str(data["direction"]).upper() == "BUY"
                                else TradeDirection.SELL,
                     entry_price=float(data["entry_price"]),
                     quantity=float(data["quantity"]),
                     stop_loss=float(data.get("stop_loss", 0)),
                     take_profit=float(data.get("take_profit", 0)),
                     confidence=float(data["confidence"]),
-                    reasoning=data.get("reasoning", "")
+                    reasoning=data.get("reasoning", ""),
                 )
 
+        except json.JSONDecodeError as e:
+            print(f"[AI] JSON parse error: {e} — content: {content[:200]}")
         except Exception as e:
             print(f"[AI] Error generating signal: {e}")
 
@@ -137,7 +144,7 @@ News Intelligence:
                 if sig.get("reason"):
                     news_section += f"- Reason: {sig['reason']}\n"
 
-        return f"""Analyze {symbol} ({asset_type.value}) and generate a trading signal.
+        return f"""วิเคราะห์ {symbol} ({asset_type.value}) แล้วสร้างสัญญาณเทรด
 
 Market Data:
 - Current Price: {market_data.get('price', 'N/A')}
@@ -148,14 +155,14 @@ Market Data:
 Technical Analysis:
 {analysis if analysis else '(None provided)'}
 {news_section}
-Return a JSON signal with:
-- direction: "BUY" or "SELL"
-- entry_price: specific price to enter
-- quantity: amount to trade
-- stop_loss: price for stop loss (optional)
-- take_profit: price for take profit (optional)
-- confidence: confidence level 0-1
-- reasoning: brief explanation
+ตอบเป็น JSON ที่มี:
+- direction: "BUY" หรือ "SELL"
+- entry_price: ราคาเข้าเทรด
+- quantity: จำนวนที่จะเทรด
+- stop_loss: ราคาตั้ง stop loss (ถ้ามี)
+- take_profit: ราคาตั้ง take profit (ถ้ามี)
+- confidence: ความมั่นใจ 0-1
+- reasoning: คำอธิบายสั้นๆ
 """
 
     def _generate_fallback(
@@ -211,7 +218,7 @@ Return a JSON signal with:
             # ไม่มี news signal — ใช้ random
             direction = random.choice([TradeDirection.BUY, TradeDirection.SELL])
             confidence = random.uniform(0.6, 0.9)
-            reasoning = "Fallback signal — configure OpenAI for better signals"
+            reasoning = "Fallback signal — configure MiniMax for better signals"
 
         if confidence < self.confidence_threshold:
             return None

@@ -84,10 +84,17 @@ A catalog of all pages in this knowledge base. Updated on every ingest, query fi
 
 - [[trading-strategy|Trading Strategy]] — AI signal generation with GPT-4o
 - [[trading-strategies]] — Trend-following, Breakout, Mean Reversion, Multi-Timeframe, Paradox
+- [[advanced-quantitative-strategies]] — Stat arb, Pairs Trading, Market Making, Orderbook/VWAP/TWAP
+- [[crypto-derivatives-strategies]] — Options, Perpetual Futures, Funding Rate Arbitrage, Basis Trading, Greeks
+- [[portfolio-position-sizing]] — Kelly Criterion, Risk Parity, Fixed Ratio, Optimal F, Drawdown Management
+- [[trading-psychology]] — Behavioral Finance, Backtesting Pitfalls, Trade Journal, Mental Models
 
 ## Sources
 
 - [[ta-deep-dive|Technical Analysis Deep Dive]] — 2,612-line comprehensive TA guide → `raw/technical-analysis-deep-dive.md`
+- [[quantitative-systematic-trading|Quantitative Systematic Trading]] — Stat arb, pairs trading, market making, orderbook analysis
+- [[crypto-derivatives-strategies|Crypto Derivatives Strategies]] — Options, perpetual futures, funding rate arbitrage, basis trading
+- [[portfolio-position-sizing|Portfolio & Position Sizing]] — Kelly, Risk Parity, Fixed Ratio, Optimal F, VaR, drawdown
 - [[ai-research-skills|AI Research Skills Library]] — 87 skills by Orchestra Research for autonomous ML research
 - [[awesome-design-md|awesome-design-md]] — 50+ ready-to-use DESIGN.md files from VoltAgent
 - [[mirofish|MiroFish Source]] — GitHub repo for MiroFish swarm intelligence prediction engine

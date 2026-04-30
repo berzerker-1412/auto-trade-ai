@@ -12,6 +12,11 @@ class AssetType(Enum):
     GOLD = "gold"
 
 
+class WalletType(Enum):
+    PAPER = "paper"   # กระเป๋าตังจำลอง — ไม่ใช้เงินจริง
+    LIVE = "live"      # กระเป๋าตังจริง — เทรดด้วยเงินจริง
+
+
 class TradeDirection(Enum):
     BUY = "buy"
     SELL = "sell"
@@ -36,6 +41,7 @@ class TradeSignal:
     take_profit: Optional[float] = None
     confidence: float = 0.0
     reasoning: str = ""
+    wallet_type: WalletType = WalletType.PAPER  # ระบุว่าสัญญาณนี้ใช้กระเป๋าตัง哪种
     timestamp: datetime = field(default_factory=datetime.now)
 
 
@@ -45,6 +51,7 @@ class Trade:
     id: Optional[int] = None
     symbol: str = ""
     asset_type: AssetType = AssetType.CRYPTO
+    wallet_type: WalletType = WalletType.PAPER  # แยกกระเป๋าตังจาก PAPER หรือ LIVE
     direction: TradeDirection = TradeDirection.BUY
     entry_price: float = 0.0
     exit_price: Optional[float] = None
@@ -96,3 +103,30 @@ class TradeResult:
             self.avg_win = self.total_pnl / self.winning_trades
         if self.losing_trades > 0:
             self.avg_loss = abs(self.total_pnl) / self.losing_trades if self.total_pnl < 0 else 0
+
+
+@dataclass
+class Wallet:
+    """Wallet — separate balance for PAPER or LIVE trading"""
+    wallet_type: WalletType
+    balance: float
+    currency: str = "USDT"
+    initial_balance: float = 0.0
+
+    def __post_init__(self):
+        if self.initial_balance == 0.0:
+            self.initial_balance = self.balance
+
+    @property
+    def pnl(self) -> float:
+        """Total P&L vs initial balance"""
+        return self.balance - self.initial_balance
+
+    def to_dict(self) -> dict:
+        return {
+            "wallet_type": self.wallet_type.value,
+            "balance": round(self.balance, 2),
+            "currency": self.currency,
+            "initial_balance": round(self.initial_balance, 2),
+            "pnl": round(self.pnl, 2),
+        }
