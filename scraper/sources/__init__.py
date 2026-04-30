@@ -6,6 +6,7 @@ from .bloomberg import BloombergScraper
 from .bbc import BBCScraper
 from .cnbc import CnbcScraper
 from .yahoo_finance import YahooFinanceScraper
+from .thai_rath import ThaiRathScraper
 
 # เรียงตามความสำคัญ: financial news ก่อน, general news หลัง
 ALL_SCRAPERS = [
@@ -13,4 +14,5 @@ ALL_SCRAPERS = [
     YahooFinanceScraper,
     ReutersScraper,
     BBCScraper,
+    ThaiRathScraper,
 ]
