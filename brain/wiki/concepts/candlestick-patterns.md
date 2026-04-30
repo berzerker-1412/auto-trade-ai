@@ -168,4 +168,4 @@ def is_bullish_engulfing(candle1: dict, candle2: dict) -> bool:
 
 ## In auto-trade-ai
 
-Implemented in `src/ai/signal_generator.py` as pattern recognition rules. The TA document has full code examples for candlestick pattern detection and signal generation.
+Implemented in `backend/ai/signal_generator.py` as pattern recognition rules. The TA document has full code examples for candlestick pattern detection and signal generation.

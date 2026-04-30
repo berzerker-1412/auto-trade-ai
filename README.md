@@ -22,40 +22,40 @@ AI-driven Auto Trade & Paper Trade System สำหรับ Crypto และ Go
 
 ```
 auto-trade-ai/
-├── src/
-│   ├── core/           # Core trading engine
-│   ├── crypto/          # Crypto trading modules (CCXT)
-│   ├── gold/            # Gold trading modules
-│   └── ai/              # AI signal generation
-├── config/              # Configuration files
-├── data/                # Trading data & logs
-├── tests/                # Unit tests
-├── docs/                 # Documentation
-├── README.md
-├── requirements.txt
-└── LICENSE
+├── CLAUDE.md          ← schema & workflows (read every session)
+├── README.md          ← this file
+├── skills/            → ~/.hermes/skills/ (symlink)
+│
+├── backend/           ← trading system source code
+│   ├── ai/            # AI signal generation (GPT-4o)
+│   ├── core/          # models, paper_trader, trade_logger
+│   ├── crypto/        # CCXT Binance integration
+│   └── gold/          # XAUUSD price feed
+│
+├── brain/             ← second brain (Obsidian vault)
+│   ├── wiki/          ← English knowledge base
+│   └── wiki_th/       ← Thai notes
+│
+├── frontend/          ← Next.js dashboard
+├── api/               ← API server
+├── config/            ← settings.yaml
+├── data/              ← trading data & logs
+├── docs/              ← documentation
+├── scraper/           ← web scraper
+└── tests/             ← unit tests
 ```
 
 ## Installation
 
 ```bash
-# Clone repository
 git clone https://github.com/berzerker-1412/auto-trade-ai.git
 cd auto-trade-ai
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-.\venv\Scripts\activate   # Windows
-
-# Install dependencies
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ## Configuration
-
-ตั้งค่า API keys และ parameters ใน `config/`:
 
 ```yaml
 # config/settings.yaml
@@ -67,7 +67,7 @@ exchange:
 
 paper_trade:
   enabled: true
-  initial_balance: 100000  # THB หรือ USD
+  initial_balance: 100000  # THB or USD
 
 crypto:
   symbols:
@@ -76,45 +76,44 @@ crypto:
   trading_pair: USDT
 
 gold:
-  source: alpha_vantage  # หรือ data source อื่น
+  source: alpha_vantage
   symbol: XAUUSD
 
 ai:
-  model: gpt-4          # AI model for signals
+  model: gpt-4
   confidence_threshold: 0.75
 ```
 
 ## Usage
 
-### Paper Trade Mode (แนะนำเริ่มต้น)
-
 ```bash
-python -m src.core.paper_trader --mode paper --asset crypto
-```
+# Paper trade mode (recommended for start)
+python -m backend.core.paper_trader --mode paper --asset crypto
 
-### Auto Trade Mode
+# Auto trade mode
+python -m backend.core.auto_trader --mode live --asset crypto
 
-```bash
-python -m src.core.auto_trader --mode live --asset crypto
-```
-
-### ดูผลการเทรด
-
-```bash
-python -m src.core.report --show-pnl
+# View P&L
+python -m backend.core.report --show-pnl
 ```
 
 ## Tech Stack
 
-- **Python 3.10+**
-- **CCXT**: Crypto exchange connection
-- **LangChain/OpenAI**: AI signal generation
-- **Pandas**: Data analysis
-- **SQLite**: Trade logging
+- **Python 3.10+** — backend
+- **CCXT** — crypto exchange connection
+- **LangChain/OpenAI** — AI signal generation
+- **Pandas** — data analysis
+- **SQLite** — trade logging
+- **Next.js** — frontend dashboard
 
-## License
+## Brain / Knowledge Base
 
-MIT License
+The project includes a **second brain** for knowledge management. See `CLAUDE.md` at project root for how it works.
+
+```bash
+# Open brain as Obsidian vault
+obsidian "/Users/chinnawat/auto-trade-ai/brain"
+```
 
 ---
 

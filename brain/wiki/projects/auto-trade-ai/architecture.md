@@ -47,7 +47,7 @@ updated: 2026-04-30
 
 ## Key Modules
 
-### `src/ai/signal_generator.py`
+### `backend/ai/signal_generator.py`
 
 **Class:** `AISignalGenerator`
 
@@ -68,7 +68,7 @@ Else → return None (no trade)
 
 ---
 
-### `src/crypto/exchange.py`
+### `backend/crypto/exchange.py`
 
 **Class:** `CryptoExchange`
 
@@ -84,7 +84,7 @@ CCXT wrapper providing:
 
 ---
 
-### `src/gold/price_feed.py`
+### `backend/gold/price_feed.py`
 
 **Class:** `GoldPriceFeed`
 
@@ -95,7 +95,7 @@ Sources:
 
 ---
 
-### `src/core/paper_trader.py`
+### `backend/core/paper_trader.py`
 
 **Class:** `PaperTrader`
 
@@ -120,7 +120,7 @@ close_trade(symbol, exit_price, reason):
 
 ---
 
-### `src/core/trade_logger.py`
+### `backend/core/trade_logger.py`
 
 **Class:** `TradeLogger`
 

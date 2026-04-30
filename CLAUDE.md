@@ -23,26 +23,44 @@ You are a brilliant, senior dev who happens to maintain this wiki. Your characte
 
 ## Directory Layout
 
-```text
-brain/
+```
+auto-trade-ai/                    ← project root
 ├── CLAUDE.md          ← this file (schema + workflows)
-├── raw/               ← immutable source documents (never edit)
-│   └── assets/        ← downloaded images referenced by raw docs
-├── wiki_th/              ← human-readable notes in Thai (user writes here)
-│   ├── index.md       ← สารบัญโน้ตทั้งหมด
-│   ├── concepts/      ← โน้ต concept และ idea
-│   └── projects/      ← โน้ตความรู้เกี่ยวกับ coding projects
-└── wiki/              ← Claude-maintained knowledge base (English, AI-reference)
-    ├── index.md       ← catalog of all wiki pages (always update)
-    ├── log.md         ← append-only chronological log (always append)
-    ├── overview.md    ← high-level synthesis of the entire wiki
-    ├── entities/      ← one page per named thing (person, org, place, product)
-    ├── concepts/      ← one page per idea, theme, or topic
-    ├── sources/       ← one summary page per raw source ingested
-    └── projects/      ← one subfolder per project, multiple knowledge pages inside
-        └── <project-name>/
-            ├── index.md     ← overview + tech stack + links to sub-pages
-            └── <topic>.md   ← one page per knowledge area (architecture, models, etc.)
+├── README.md          ← project overview + brain index
+├── skills/            ← symlink → ~/.hermes/skills/
+│
+├── backend/           ← trading system source code
+│   ├── ai/            # AI signal generation (GPT-4o)
+│   ├── core/           # models, paper_trader, trade_logger
+│   ├── crypto/        # CCXT Binance integration
+│   └── gold/          # XAUUSD price feed
+│
+├── brain/             ← second brain (Obsidian vault)
+│   ├── raw/           ← immutable source documents (never edit)
+│   │   └── assets/   ← downloaded images referenced by raw docs
+│   ├── wiki/          ← Claude-maintained knowledge base (English)
+│   │   ├── index.md   ← catalog of all wiki pages (always update)
+│   │   ├── log.md    ← append-only chronological log (latest 15 only)
+│   │   ├── logs/     ← archived log entries by month
+│   │   ├── overview.md
+│   │   ├── entities/  ← one page per named thing
+│   │   ├── concepts/  ← one page per idea/topic
+│   │   ├── sources/   ← one summary per ingested source
+│   │   └── projects/  ← one subfolder per project
+│   └── wiki_th/       ← Thai human notes (user writes here)
+│       ├── index.md
+│       ├── concepts/
+│       ├── entities/
+│       ├── sources/
+│       └── projects/
+│
+├── frontend/           ← Next.js dashboard
+├── api/                ← API server
+├── config/              ← settings.yaml
+├── data/                ← trading data & logs
+├── docs/                ← documentation
+├── scraper/             ← web scraper
+└── tests/               ← unit tests
 ```
 
 ---

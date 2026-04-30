@@ -33,12 +33,12 @@ P&L Tracking
 
 | ไฟล์ | ทำหน้าที่ |
 | --- | --- |
-| `src/ai/signal_generator.py` | สร้างสัญญาณ BUY/SELL ด้วย GPT-4o |
-| `src/crypto/exchange.py` | เชื่อมต่อ exchange ผ่าน CCXT (Binance) |
-| `src/gold/price_feed.py` | ดึงราคาทอง (demo หรือ APIจริง) |
-| `src/core/paper_trader.py` | จำลองเทรด ไม่ใช้เงินจริง |
-| `src/core/trade_logger.py` | เก็บ log ลง SQLite |
-| `src/core/models.py` | dataclass: TradeSignal, Trade, TradeResult |
+| `backend/ai/signal_generator.py` | สร้างสัญญาณ BUY/SELL ด้วย GPT-4o |
+| `backend/crypto/exchange.py` | เชื่อมต่อ exchange ผ่าน CCXT (Binance) |
+| `backend/gold/price_feed.py` | ดึงราคาทอง (demo หรือ APIจริง) |
+| `backend/core/paper_trader.py` | จำลองเทรด ไม่ใช้เงินจริง |
+| `backend/core/trade_logger.py` | เก็บ log ลง SQLite |
+| `backend/core/models.py` | dataclass: TradeSignal, Trade, TradeResult |
 | `config/settings.yaml` | ตั้งค่าทั้งหมด |
 
 ---

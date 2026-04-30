@@ -12,6 +12,7 @@ import { StatCard } from "@/components/StatCard";
 import { TradeTable } from "@/components/TradeTable";
 import { TickerCard } from "@/components/TickerCard";
 import { ExchangeRateTicker, THBStatsCard } from "@/components/ExchangeRate";
+import TraderControl from "@/components/TraderControl";
 import { api } from "@/lib/api";
 import { Trade, Ticker } from "@/types";
 
@@ -65,6 +66,11 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-3xl font-bold text-white">Dashboard</h1>
         <p className="mt-1 text-gray-500">Overview of your paper trading performance</p>
+      </div>
+
+      {/* Auto Trader Control */}
+      <div className="max-w-md">
+        <TraderControl />
       </div>
 
       {/* Stats Grid */}

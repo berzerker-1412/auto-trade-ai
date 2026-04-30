@@ -7,6 +7,39 @@ Format: `## [YYYY-MM-DD HH:MM] <operation> | <title>`
 
 ---
 
+## [2026-05-01 00:20] restructure | Restructured project layout
+
+**Moved:**
+- `brain/CLAUDE.md` + `brain/README.md` → project root (deleted duplicates from brain/)
+- `src/` → `backend/` (trading system code)
+- Created `skills/` → `~/.hermes/skills/` symlink at project root
+
+**Updated:**
+- `CLAUDE.md` (root) — directory layout updated to reflect new structure
+- `README.md` (root) — structure diagram + backend/ paths
+
+Updated `wiki/projects/auto-trade-ai/` pages to reference `backend/` instead of `src/`.
+
+## [2026-05-01 00:15] restore | Restored non-EzyHR files from original 2nd Brain
+
+Restored 33 files from original brain at `/Users/chinnawat/Desktop/Brain/2nd Brain/`, excluding all EzyHR-related files (concepts/ezyhr.md, entities/ezyhr.md, sources/ezyhr-support-docs.md).
+
+**Restored to wiki/ (English):**
+- concepts/: design-md, graphrag, multi-agent-simulation, obsidian-setup, soul-md, swarm-intelligence
+- entities/: camel-ai, google-stitch, mirofish, oasis, openclaw, orchestra-research, playwright, voltagent, zep-cloud
+- sources/: ai-research-skills, awesome-design-md, mirofish, playwright-skill
+- projects/: bank-noti-tester (1), claude-setup (4), mymoney (4)
+- entertainment/: manga/soul-eater (5 files), movie, music, novel, cartoon
+
+**Restored to wiki_th/ (Thai):**
+- concepts/: obsidian-setup, multi-agent-simulation, swarm-intelligence, design-md, soul-md
+- entities/: orchestra-research, mirofish
+- sources/: ai-research-skills, playwright-skill
+- projects/: mymoney (4), bank-noti-tester (1), claude-setup (4), 50-frontend-projects (3)
+- entertainment/: same as wiki/
+
+Updated wiki/index.md and wiki_th/index.md with full catalog of all restored pages.
+
 ## [2026-04-30 23:35] project | auto-trade-ai — Full codebase documentation
 
 Explored full codebase. Created 4 wiki pages:

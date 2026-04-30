@@ -46,7 +46,7 @@ AI-powered trading system that generates BUY/SELL signals across crypto and gold
 
 ```
 auto-trade-ai/
-├── src/
+├── backend/
 │   ├── ai/
 │   │   └── signal_generator.py     ← AI signal generation (GPT-4o)
 │   ├── crypto/
