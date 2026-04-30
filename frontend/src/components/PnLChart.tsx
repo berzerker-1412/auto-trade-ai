@@ -1,19 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie,
-} from "recharts";
-import { formatCurrency, formatPercent } from "@/lib/utils";
+import { BarChart } from "./ui/charts/BarChart";
+import { PieChart } from "./ui/charts/PieChart";
+import { Card, CardHeader, CardTitle } from "./ui/layout";
+import { formatCurrency } from "@/lib/utils";
 
 interface PnLChartProps {
   trades: {
@@ -73,84 +64,28 @@ export function PnLDistribution({ trades }: PnLChartProps) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Distribution Histogram */}
-      <div className="rounded-xl bg-gray-900/50 border border-gray-800 p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">P&L Distribution</h3>
-        <p className="text-sm text-gray-500 mb-4">Returns by percentage range</p>
+      <BarChart
+        data={distribution}
+        height={192}
+        title="P&L Distribution"
+        subtitle="Returns by percentage range"
+      />
 
-        <div className="h-48">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={distribution} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-              <XAxis
-                dataKey="range"
-                stroke="#6b7280"
-                fontSize={10}
-                tickLine={false}
-                axisLine={{ stroke: "#374151" }}
-              />
-              <YAxis
-                stroke="#6b7280"
-                fontSize={12}
-                tickLine={false}
-                axisLine={{ stroke: "#374151" }}
-                allowDecimals={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#1f2937",
-                  border: "1px solid #374151",
-                  borderRadius: "8px",
-                  color: "#f9fafb",
-                }}
-                formatter={(value) => [value, "Trades"]}
-              />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                {distribution.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Win/Loss Pie + Stats */}
-      <div className="rounded-xl bg-gray-900/50 border border-gray-800 p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Win Rate</h3>
-        <p className="text-sm text-gray-500 mb-4">Trade outcomes breakdown</p>
-
+      <Card className="p-6">
+        <CardHeader>
+          <CardTitle subtitle="Trade outcomes breakdown">Win Rate</CardTitle>
+        </CardHeader>
         <div className="flex items-center gap-4">
-          {/* Pie Chart */}
-          <div className="h-40 w-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={45}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#1f2937",
-                    border: "1px solid #374151",
-                    borderRadius: "8px",
-                    color: "#f9fafb",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+          <div style={{ width: 160, height: 160 }}>
+            <PieChart
+              data={pieData}
+              height={160}
+              innerRadius={45}
+              outerRadius={70}
+              showLegend={false}
+            />
           </div>
 
-          {/* Legend & Stats */}
           <div className="flex-1 space-y-3">
             {pieData.map((entry) => (
               <div key={entry.name} className="flex items-center justify-between">
@@ -169,27 +104,21 @@ export function PnLDistribution({ trades }: PnLChartProps) {
 
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Avg Win</span>
-              <span className="text-emerald-400 font-medium">
-                {formatCurrency(avgWin)}
-              </span>
+              <span className="text-emerald-400 font-medium">{formatCurrency(avgWin)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Avg Loss</span>
-              <span className="text-red-400 font-medium">
-                {formatCurrency(avgLoss)}
-              </span>
+              <span className="text-red-400 font-medium">{formatCurrency(avgLoss)}</span>
             </div>
             {avgLoss !== 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Avg Win/Loss</span>
-                <span className="text-white font-medium">
-                  {(avgWin / Math.abs(avgLoss)).toFixed(2)}x
-                </span>
+                <span className="text-white font-medium">{(avgWin / Math.abs(avgLoss)).toFixed(2)}x</span>
               </div>
             )}
           </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

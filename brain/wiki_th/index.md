@@ -20,6 +20,12 @@
 - [[concepts/obsidian-setup]] — วิธีตั้ง Obsidian vault
 - [[concepts/multi-agent-simulation]] — Multi-agent simulation
 - [[concepts/swarm-intelligence]] — Swarm intelligence
+- [[concepts/candlestick-patterns]] — แท่งเทียนและรูปแบบพื้นฐาน
+- [[concepts/chart-patterns]] — รูปแบบกราฟ reversal และ continuation
+- [[concepts/technical-indicators]] — ตัวชี้วัดทางเทคนิค (RSI, MACD, Bollinger, ATR)
+- [[concepts/market-theories]] — ทฤษฎีตลาด (Dow, Elliott Wave, Wyckoff)
+- [[concepts/trading-strategies]] — กลยุทธ์เทรด (breakout, trend-following, mean-reversion)
+- [[concepts/ai-ml-trading]] — AI/ML สำหรับ trading (LSTM, RL, Sentiment)
 
 ## Entities
 
@@ -30,6 +36,7 @@
 
 - [[sources/ai-research-skills]] — AI Research Skills Library
 - [[sources/playwright-skill]] — Playwright Skill
+- [[sources/ta-deep-dive]] — Technical Analysis Deep Dive source summary
 
 ## Entertainment
 

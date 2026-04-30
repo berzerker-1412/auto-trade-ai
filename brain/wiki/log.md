@@ -7,6 +7,41 @@ Format: `## [YYYY-MM-DD HH:MM] <operation> | <title>`
 
 ---
 
+## [2026-05-01 00:45] sync | Auto AI translation hook — wiki/ → wiki_th/
+
+**Setup:** `.git/hooks/post-commit` now auto-translates wiki/ changes to Thai using MiniMax-M2.5.
+
+**How it works:**
+1. After `git commit` that touches `brain/wiki/*.md` files
+2. Hook sources `/Users/chinnawat/.hermes/.env` for MINIMAX_API_KEY
+3. Runs `brain/.scripts/translate.py <source> <dest>` for each changed .md file
+4. Skips `log.md` and `index.md` (framework files)
+5. translate.py strips `<think>...</think>` thinking blocks, preserves markdown syntax
+
+**Files created:**
+- `brain/.scripts/translate.py` — MiniMax API caller, handles thinking-block stripping, proper .env parsing
+- `brain/.scripts/translate.sh` — shell wrapper
+- `.git/hooks/post-commit` — main hook that orchestrates everything
+
+**Existing wiki_th/ content:** confirmed all 7 concept/source pages already have good Thai translations from prior backfill (candlestick-patterns, chart-patterns, technical-indicators, market-theories, trading-strategies, ai-ml-trading, ta-deep-dive).
+
+Updated CLAUDE.md to reflect auto-translate rule.
+
+## [2026-05-01 00:30] sync | Auto-sync hook + wiki_th/ backfill
+
+**Auto-sync hook:** Created `.git/hooks/post-commit` that auto-copies changed wiki/ files to wiki_th/ after every commit. Updated CLAUDE.md to reflect this.
+
+**wiki_th/ backfill:** Created 7 Thai concept/source pages that were missing:
+- `wiki_th/concepts/candlestick-patterns.md`
+- `wiki_th/concepts/chart-patterns.md`
+- `wiki_th/concepts/technical-indicators.md`
+- `wiki_th/concepts/market-theories.md`
+- `wiki_th/concepts/trading-strategies.md`
+- `wiki_th/concepts/ai-ml-trading.md`
+- `wiki_th/sources/ta-deep-dive.md`
+
+Updated `wiki_th/index.md` with all new pages.
+
 ## [2026-05-01 00:20] restructure | Restructured project layout
 
 **Moved:**

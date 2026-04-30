@@ -1,20 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Zap, Play, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { Ticker, TradeSignal, TradeDirection } from "@/types";
-import {
-  formatCurrency,
-  cn,
-  getDirectionColor,
-} from "@/lib/utils";
-import {
-  ArrowUpRight,
-  ArrowDownRight,
-  Play,
-  RefreshCw,
-  Zap,
-} from "lucide-react";
+import { formatCurrency, cn } from "@/lib/utils";
+import { Button, NumberInput, DirectionToggle } from "@/components/ui/inputs";
+import { Card, CardHeader, CardTitle } from "@/components/ui/layout";
 
 export default function TradePage() {
   const [tickers, setTickers] = useState<Record<string, Ticker>>({});
@@ -113,7 +105,7 @@ export default function TradePage() {
 
           {/* Price Display */}
           {currentTicker && (
-            <div className="rounded-2xl bg-gray-900/50 border border-gray-800 p-6">
+            <Card className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">{currentTicker.symbol}</p>
@@ -142,126 +134,84 @@ export default function TradePage() {
                   </div>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Trading Form */}
-          <div className="rounded-2xl bg-gray-900/50 border border-gray-800 p-6 space-y-6">
-            <h3 className="text-lg font-semibold text-white">New Position</h3>
+          <Card className="p-6">
+            <CardHeader>
+              <CardTitle>New Position</CardTitle>
+            </CardHeader>
 
-            {/* Direction Toggle */}
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => setDirection(TradeDirection.BUY)}
-                className={cn(
-                  "flex items-center justify-center gap-2 rounded-xl py-4 font-semibold transition-all",
-                  direction === TradeDirection.BUY
-                    ? "bg-emerald-500 text-white"
-                    : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                )}
-              >
-                <ArrowUpRight className="h-5 w-5" />
-                BUY / LONG
-              </button>
-              <button
-                onClick={() => setDirection(TradeDirection.SELL)}
-                className={cn(
-                  "flex items-center justify-center gap-2 rounded-xl py-4 font-semibold transition-all",
-                  direction === TradeDirection.SELL
-                    ? "bg-red-500 text-white"
-                    : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                )}
-              >
-                <ArrowDownRight className="h-5 w-5" />
-                SELL / SHORT
-              </button>
-            </div>
+            <div className="space-y-6">
+              {/* Direction Toggle */}
+              <DirectionToggle
+                value={direction}
+                onChange={setDirection}
+                disabled={executing}
+              />
 
-            {/* Quantity */}
-            <div>
-              <label className="block text-sm text-gray-500 mb-2">Quantity</label>
-              <input
-                type="number"
+              {/* Quantity */}
+              <NumberInput
+                label="Quantity"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 step="0.001"
-                className="w-full rounded-lg bg-gray-800 border border-gray-700 px-4 py-3 text-white focus:border-emerald-500 focus:outline-none"
               />
-            </div>
 
-            {/* SL/TP */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-500 mb-2">Stop Loss (Optional)</label>
-                <input
-                  type="number"
+              {/* SL/TP */}
+              <div className="grid grid-cols-2 gap-4">
+                <NumberInput
+                  label="Stop Loss (Optional)"
                   value={stopLoss}
                   onChange={(e) => setStopLoss(e.target.value)}
                   placeholder="0.00"
-                  className="w-full rounded-lg bg-gray-800 border border-gray-700 px-4 py-3 text-white focus:border-emerald-500 focus:outline-none"
                 />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-500 mb-2">Take Profit (Optional)</label>
-                <input
-                  type="number"
+                <NumberInput
+                  label="Take Profit (Optional)"
                   value={takeProfit}
                   onChange={(e) => setTakeProfit(e.target.value)}
                   placeholder="0.00"
-                  className="w-full rounded-lg bg-gray-800 border border-gray-700 px-4 py-3 text-white focus:border-emerald-500 focus:outline-none"
                 />
               </div>
-            </div>
 
-            {/* Execute Button */}
-            <button
-              onClick={handleExecute}
-              disabled={executing || !quantity}
-              className={cn(
-                "w-full flex items-center justify-center gap-2 rounded-xl py-4 font-semibold transition-all",
-                executing
-                  ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                  : direction === TradeDirection.BUY
-                  ? "bg-emerald-500 text-white hover:bg-emerald-600"
-                  : "bg-red-500 text-white hover:bg-red-600"
-              )}
-            >
-              {executing ? (
-                <>
-                  <RefreshCw className="h-5 w-5 animate-spin" />
-                  Executing...
-                </>
-              ) : (
-                <>
-                  <Play className="h-5 w-5" />
-                  Execute {direction.toUpperCase()}
-                </>
-              )}
-            </button>
-
-            {/* Result */}
-            {result && (
-              <div
-                className={cn(
-                  "rounded-lg p-4 text-sm",
-                  result.success
-                    ? "bg-emerald-500/10 text-emerald-400"
-                    : "bg-red-500/10 text-red-400"
-                )}
+              {/* Execute Button */}
+              <Button
+                variant={direction === TradeDirection.BUY ? "success" : "danger"}
+                size="lg"
+                className="w-full"
+                loading={executing}
+                disabled={executing || !quantity}
+                icon={<Play className="h-5 w-5" />}
+                onClick={handleExecute}
               >
-                {result.message}
-              </div>
-            )}
-          </div>
+                {executing ? "Executing..." : `Execute ${direction.toUpperCase()}`}
+              </Button>
+
+              {/* Result */}
+              {result && (
+                <div
+                  className={cn(
+                    "rounded-lg p-4 text-sm",
+                    result.success
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-red-500/10 text-red-400"
+                  )}
+                >
+                  {result.message}
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
 
         {/* Sidebar - Quick Info */}
         <div className="space-y-6">
           {/* AI Suggestion */}
-          <div className="rounded-2xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 p-6">
+          <Card className="p-6">
             <div className="flex items-center gap-2 mb-4">
               <Zap className="h-5 w-5 text-emerald-400" />
-              <h3 className="font-semibold text-white">AI Suggestion</h3>
+              <CardTitle>AI Suggestion</CardTitle>
             </div>
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
@@ -281,18 +231,22 @@ export default function TradePage() {
                 <span className="text-white font-medium">1:2.5</span>
               </div>
             </div>
-            <button className="mt-4 w-full rounded-lg bg-emerald-500/20 py-2 text-sm text-emerald-400 hover:bg-emerald-500/30">
+            <Button variant="outline" size="sm" className="mt-4 w-full">
               Apply Suggestion
-            </button>
-          </div>
+            </Button>
+          </Card>
 
           {/* Risk Calculator */}
-          <div className="rounded-2xl bg-gray-900/50 border border-gray-800 p-6">
-            <h3 className="font-semibold text-white mb-4">Risk Calculator</h3>
+          <Card className="p-6">
+            <CardHeader>
+              <CardTitle>Risk Calculator</CardTitle>
+            </CardHeader>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500">Position Size</span>
-                <span className="text-white">${(parseFloat(quantity) * (currentTicker?.price || 0)).toFixed(2)}</span>
+                <span className="text-white">
+                  ${(parseFloat(quantity) * (currentTicker?.price || 0)).toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Risk per Trade</span>
@@ -305,7 +259,7 @@ export default function TradePage() {
                 </span>
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     </div>
