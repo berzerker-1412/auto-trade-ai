@@ -29,14 +29,48 @@ export function formatPercent(value: number): string {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-export function formatDate(date: string | null): string {
+export function formatDate(date: string | null, locale = "th-TH"): string {
   if (!date) return "-";
-  return new Date(date).toLocaleString("en-US", {
+  const d = new Date(date);
+  const lang = locale === "th" ? "th-TH" : "en-US";
+  const year = locale === "th" ? d.getFullYear() + 543 : d.getFullYear();
+  return d.toLocaleString(lang, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    year: "numeric",
+  }).replace(String(d.getFullYear()), String(year));
+}
+
+export function formatTime(date: string | null): string {
+  if (!date) return "-";
+  return new Date(date).toLocaleString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
+}
+
+export function formatEntryExit(reason: { summary?: string; trigger?: string; trigger_detail?: string } | null | undefined): string {
+  if (!reason) return "-";
+  if (reason.summary) {
+    // เอาแค่บรรทัดแรกของ summary
+    const firstLine = reason.summary.split("\n")[0];
+    return firstLine.replace(/^[^\w]+/, "").slice(0, 60);
+  }
+  if (reason.trigger) {
+    const triggerText: Record<string, string> = {
+      stop_loss: "Stop Loss",
+      take_profit: "Take Profit",
+      trailing_stop: "Trailing Stop",
+      regime_change: "Regime Change",
+      risk_manager: "Risk Manager",
+      manual: "Manual",
+    };
+    return `${triggerText[reason.trigger] || reason.trigger}: ${reason.trigger_detail || ""}`;
+  }
+  return "-";
 }
 
 export function getStatusColor(status: string): string {

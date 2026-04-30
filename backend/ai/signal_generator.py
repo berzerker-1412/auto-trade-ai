@@ -21,7 +21,7 @@ class AISignalGenerator:
         model: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        confidence_threshold: float = 0.70,
+        confidence_threshold: float = 0.55,
     ):
         self.model = model or os.getenv("MINIMAX_MODEL_NAME", "MiniMax-Text-01")
         self.confidence_threshold = confidence_threshold
@@ -93,14 +93,20 @@ class AISignalGenerator:
 
             data = json.loads(content)
 
+            price = float(data["entry_price"])
+            raw_qty = float(data["quantity"])
+            # Cap quantity ไม่ให้เกิน $100 ต่อ trade (10% ของ $1000)
+            trade_notional = 100.0
+            quantity = min(raw_qty, trade_notional / price) if price > 0 else raw_qty
+
             if data.get("confidence", 0) >= self.confidence_threshold:
                 return TradeSignal(
                     asset_type=asset_type,
                     symbol=symbol,
                     direction=TradeDirection.BUY if str(data["direction"]).upper() == "BUY"
                                else TradeDirection.SELL,
-                    entry_price=float(data["entry_price"]),
-                    quantity=float(data["quantity"]),
+                    entry_price=price,
+                    quantity=quantity,
                     stop_loss=float(data.get("stop_loss", 0)),
                     take_profit=float(data.get("take_profit", 0)),
                     confidence=float(data["confidence"]),
@@ -220,6 +226,11 @@ Technical Analysis:
             confidence = random.uniform(0.6, 0.9)
             reasoning = "Fallback signal — configure MiniMax for better signals"
 
+        # ใช้ notional $50 ต่อ trade (5% ของ $1000 balance)
+        # BTC: 50/76000 ≈ 0.0007, ETH: 50/2260 ≈ 0.022, XAU: 50/2345 ≈ 0.021
+        trade_notional = 50.0
+        quantity = round(trade_notional / price, 6) if price > 0 else 0.001
+
         if confidence < self.confidence_threshold:
             return None
 
@@ -228,7 +239,7 @@ Technical Analysis:
             symbol=symbol,
             direction=direction,
             entry_price=price,
-            quantity=0.1,
+            quantity=quantity,
             stop_loss=price * 0.98 if direction == TradeDirection.BUY else price * 1.02,
             take_profit=price * 1.05 if direction == TradeDirection.BUY else price * 0.95,
             confidence=confidence,

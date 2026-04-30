@@ -5,12 +5,14 @@ import {
   Newspaper,
   TrendingUp,
   TrendingDown,
-  AlertTriangle,
   Zap,
   Globe,
   ChevronRight,
   RefreshCw,
   Loader2,
+  X,
+  ExternalLink,
+  BookOpen,
 } from "lucide-react";
 
 type SentimentLabel = "positive" | "negative" | "neutral";
@@ -40,6 +42,8 @@ interface Article {
   category: string;
   published_at: string | null;
   summary: string;
+  content?: string;
+  content_th?: string;
   sentiment_score: number;
   sentiment_label: SentimentLabel;
   impact_tags: string[];
@@ -98,6 +102,9 @@ export function NewsFeed() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
   const [scrapeLoading, setScrapeLoading] = useState(false);
+  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+  const [articleDetail, setArticleDetail] = useState<Article | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const fetchFeed = async () => {
     setLoading(true);
@@ -129,6 +136,30 @@ export function NewsFeed() {
     } finally {
       setScrapeLoading(false);
     }
+  };
+
+  const fetchArticleDetail = async (article: Article) => {
+    setSelectedArticle(article);
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/news/article/${article.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setArticleDetail(data);
+      } else {
+        // fallback: ใช้ข้อมูลจาก list ถ้าไม่มี content เต็ม
+        setArticleDetail(article);
+      }
+    } catch {
+      setArticleDetail(article);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeModal = () => {
+    setSelectedArticle(null);
+    setArticleDetail(null);
   };
 
   useEffect(() => {
@@ -215,9 +246,18 @@ export function NewsFeed() {
           </div>
         )}
         {articles.map((article) => (
-          <ArticleCard key={article.id} article={article} />
+          <ArticleCard key={article.id} article={article} onReadMore={fetchArticleDetail} />
         ))}
       </div>
+
+      {/* Article Detail Modal */}
+      {selectedArticle && (
+        <ArticleModal
+          article={articleDetail || selectedArticle}
+          loading={detailLoading}
+          onClose={closeModal}
+        />
+      )}
     </div>
   );
 }
@@ -303,11 +343,123 @@ function TradeSignalBanner({ signal }: { signal: TradeSignal }) {
   );
 }
 
-function ArticleCard({ article }: { article: Article }) {
+function ArticleModal({
+  article,
+  loading,
+  onClose,
+}: {
+  article: Article;
+  loading: boolean;
+  onClose: () => void;
+}) {
   const cfg = SENTIMENT_CONFIG[article.sentiment_label];
   const SentimentIcon = cfg.icon;
 
-  const [expanded, setExpanded] = useState(false);
+  const timeAgo = article.published_at
+    ? new Date(article.published_at).toLocaleString("th-TH", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "ไม่ระบุเวลา";
+
+  // ใช้ content_th (ถ้าแปลแล้ว) หรือ content (ภาษาอังกฤษ) หรือ summary
+  const fullContent = article.content_th || article.content || article.summary;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative z-10 w-full max-w-2xl max-h-[85vh] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-gray-800">
+          <div className="flex-1 min-w-0 pr-4">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-xs text-gray-500">{article.source}</span>
+              <span className="text-xs text-gray-600">•</span>
+              <span className="text-xs text-gray-500">{timeAgo}</span>
+              <span className={`px-1.5 py-0.5 rounded text-xs ${CATEGORY_COLORS[article.category] || CATEGORY_COLORS.general}`}>
+                {article.category}
+              </span>
+            </div>
+            <h2 className="text-lg font-semibold text-white leading-snug">
+              {article.title}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex-shrink-0 p-1.5 rounded-lg hover:bg-gray-800 text-gray-500 hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Sentiment bar */}
+        <div className={`flex items-center gap-3 px-5 py-3 border-b border-gray-800 ${cfg.bg}`}>
+          <SentimentIcon className={`w-5 h-5 ${cfg.color}`} />
+          <span className={`text-sm font-medium ${cfg.color}`}>
+            {cfg.label} — Sentiment {article.sentiment_score > 0 ? "+" : ""}{article.sentiment_score.toFixed(2)}
+          </span>
+          {article.impact_tags && article.impact_tags.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {article.impact_tags.map((tag) => (
+                <span key={tag} className="px-2 py-0.5 bg-gray-700/50 text-gray-300 rounded text-xs">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading ? (
+            <div className="flex items-center justify-center h-40">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
+              <span className="ml-2 text-gray-500">กำลังโหลดเนื้อหา...</span>
+            </div>
+          ) : (
+            <div className="prose prose-invert prose-sm max-w-none">
+              <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
+                {fullContent}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between p-4 border-t border-gray-800">
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300"
+          >
+            <ExternalLink className="w-4 h-4" />
+            อ่านข่าวต้นฉบับ
+          </a>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"
+          >
+            ปิด
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArticleCard({ article, onReadMore }: { article: Article; onReadMore: (a: Article) => void }) {
+  const cfg = SENTIMENT_CONFIG[article.sentiment_label];
+  const SentimentIcon = cfg.icon;
 
   const timeAgo = article.published_at
     ? new Date(article.published_at).toLocaleString("th-TH", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })
@@ -336,15 +488,15 @@ function ArticleCard({ article }: { article: Article }) {
           </div>
 
           <h3
-            className="font-medium text-white leading-snug cursor-pointer"
-            onClick={() => setExpanded(!expanded)}
+            className="font-medium text-white leading-snug cursor-pointer hover:text-blue-300"
+            onClick={() => onReadMore(article)}
           >
             {article.title}
           </h3>
 
-          {expanded && article.summary && (
-            <p className="mt-2 text-sm text-gray-400 leading-relaxed">{article.summary}</p>
-          )}
+          <p className="mt-1 text-sm text-gray-400 leading-relaxed line-clamp-2">
+            {article.summary}
+          </p>
 
           <div className="mt-2 flex items-center justify-between">
             <div className="flex gap-1 flex-wrap">
@@ -354,15 +506,13 @@ function ArticleCard({ article }: { article: Article }) {
                 </span>
               ))}
             </div>
-            <a
-              href={article.url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => onReadMore(article)}
               className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
-              onClick={(e) => e.stopPropagation()}
             >
-              อ่านต่อ <ChevronRight className="w-3 h-3" />
-            </a>
+              <BookOpen className="w-3 h-3" />
+              อ่านต่อ
+            </button>
           </div>
         </div>
       </div>

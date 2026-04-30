@@ -43,10 +43,41 @@ class NewsArticle:
             "category": self.category,
             "published_at": self.published_at.isoformat() if self.published_at else None,
             "summary": self.summary,
-            "content": self.content[:500],  # เก็บแค่ 500 ตัวอักษรแรก
+            "content": self.content,  # เก็บเต็มๆ
             "sentiment_score": self.sentiment_score,
             "impact_tags": self.impact_tags,
         }
+
+
+# Playwright browser instance — reuse across calls
+_playwright_browser = None
+
+
+def _get_playwright_browser():
+    """Get or create shared Playwright browser"""
+    global _playwright_browser
+    if _playwright_browser is None:
+        try:
+            from playwright.sync_api import sync_playwright
+            pw = sync_playwright().start()
+            _playwright_browser = pw.chromium.launch(headless=True)
+            logger.info("[Playwright] Browser launched")
+        except Exception as e:
+            logger.error(f"[Playwright] Failed to launch browser: {e}")
+            return None
+    return _playwright_browser
+
+
+def close_playwright():
+    """Close Playwright browser (call on shutdown)"""
+    global _playwright_browser
+    if _playwright_browser:
+        try:
+            _playwright_browser.close()
+            _playwright_browser = None
+            logger.info("[Playwright] Browser closed")
+        except Exception:
+            pass
 
 
 class BaseScraper(ABC):
@@ -55,6 +86,9 @@ class BaseScraper(ABC):
     source_name: str = ""
     base_url: str = ""
     categories: List[str] = []  # categories ที่ scraper นี้ดูแล
+
+    # Content length threshold — ถ้าได้ content น้อยกว่านี้จะใช้ Playwright
+    MIN_CONTENT_LENGTH = 200
 
     def __init__(self):
         self.session = requests.Session()
@@ -72,6 +106,83 @@ class BaseScraper(ABC):
 
     def parse_html(self, html: str) -> BeautifulSoup:
         return BeautifulSoup(html, "lxml")
+
+    def fetch_with_playwright(self, url: str, timeout: int = 15000) -> Optional[str]:
+        """
+        ดึง HTML ที่ render แล้ว (รวม JS) ด้วย Playwright
+        ใช้เฉพาะเมื่อ content จาก requests สั้นเกินไป
+        """
+        browser = _get_playwright_browser()
+        if not browser:
+            return None
+
+        page = None
+        try:
+            page = browser.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+
+            # รอให้ article body ขึ้น
+            page.wait_for_selector(
+                "article, [data-testid='article-body'], .article-body, .article-content",
+                timeout=10000,
+            )
+
+            return page.content()
+
+        except Exception as e:
+            logger.warning(f"[{self.source_name}] Playwright fetch failed for {url}: {e}")
+            return None
+        finally:
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+
+    def extract_full_article(self, url: str) -> str:
+        """
+        ดึง article body ด้วย Playwright แล้ว extract text
+        Returns: article content string
+        """
+        html = self.fetch_with_playwright(url)
+        if not html:
+            return ""
+
+        soup = BeautifulSoup(html, "lxml")
+
+        # ลอง selectors ต่างๆ ที่เป็น article body
+        for selector in [
+            "[data-testid='article-body']",
+            "article .article-body",
+            ".article-body",
+            "article",
+            "[data-component='article-body']",
+            ".story-body",
+            "div[itemprop='articleBody']",
+        ]:
+            body = soup.select_one(selector)
+            if body:
+                # เอาทุก paragraph
+                paras = body.select("p")
+                content_parts = []
+                for p in paras:
+                    text = p.get_text(strip=True)
+                    if text and len(text) > 30:
+                        content_parts.append(text)
+
+                content = "\n\n".join(content_parts)
+                if len(content) > self.MIN_CONTENT_LENGTH:
+                    return content
+
+        # Fallback: เอาทุก p ที่มี text ยาวพอ
+        all_p = soup.select("p")
+        content_parts = []
+        for p in all_p:
+            text = p.get_text(strip=True)
+            if text and len(text) > 50:
+                content_parts.append(text)
+
+        return "\n\n".join(content_parts)
 
     @abstractmethod
     def get_article_urls(self) -> List[str]:

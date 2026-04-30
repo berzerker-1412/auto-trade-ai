@@ -33,6 +33,53 @@ export interface Trade {
   trade_number: number;
   pnl?: number | null;
   pnl_percent?: number | null;
+  entry_reason?: EntryReason | null;
+  exit_reason?: ExitReason | null;
+}
+
+export interface EntryReason {
+  timestamp: string;
+  symbol: string;
+  direction: string;
+  signal_direction: string;
+  signal_confidence: number;
+  signal_reasoning: string;
+  regime_name: string;
+  regime_confidence: number;
+  regime_reason: string;
+  strategy_used: string;
+  indicators: Record<string, number>;
+  news_bias: string;
+  news_score: number;
+  sizing_method: string;
+  sizing_kelly_pct: number | null;
+  sizing_size: number;
+  sizing_quantity: number;
+  sizing_reason: string;
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
+  risk_reward_ratio: number;
+  risk_check_passed: boolean;
+  risk_check_reason: string;
+  summary: string;
+}
+
+export interface ExitReason {
+  timestamp: string;
+  symbol: string;
+  trade_number: number;
+  trigger: string;
+  trigger_detail: string;
+  entry_price: number;
+  exit_price: number;
+  holding_period_minutes: number;
+  pnl: number;
+  pnl_pct: number;
+  vs_entry_expectation: string;
+  trailing_highest_price: number | null;
+  trailing_locked_pct: number | null;
+  summary: string;
 }
 
 export interface TradeSignal {

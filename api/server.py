@@ -136,17 +136,148 @@ def init_trades_db():
             CREATE INDEX IF NOT EXISTS idx_trades_wallet_type 
             ON trades(wallet_type)
         """)
+        # wallet_transactions: ประวัติ deposit/withdraw
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS wallet_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                wallet_type TEXT NOT NULL DEFAULT 'paper',
+                type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                note TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_wallet_tx_type
+            ON wallet_transactions(wallet_type, type)
+        """)
         # default settings
         defaults = {
             "max_position_size": "0.1",
             "stop_loss_percent": "2.0",
             "take_profit_percent": "5.0",
             "max_concurrent_trades": "3",
+            "paper_initial_balance": "100000.0",
         }
         for k, v in defaults.items():
             conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
         conn.commit()
     logger.info(f"Trades DB initialized at {TRADES_DB}")
+
+# ── Wallet Persistence ───────────────────────────────────────
+def _get_setting(key: str, default: str = None) -> Optional[str]:
+    """ดึงค่า setting จาก DB"""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+def _set_setting(key: str, value: str):
+    """บันทึกค่า setting ลง DB"""
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (key, str(value)))
+        conn.commit()
+
+def get_wallet_balance(wallet_type: str = "paper") -> float:
+    """ดึง balance ปัจจุบัน = initial + deposits - withdrawals + total_pnl"""
+    initial = float(_get_setting(f"{wallet_type}_initial_balance", "100000.0"))
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT type, SUM(amount) as total
+            FROM wallet_transactions
+            WHERE wallet_type = ?
+            GROUP BY type
+        """, (wallet_type,)).fetchall()
+        tx = {r[0]: r[1] for r in rows}
+
+        deposits = tx.get("deposit", 0.0)
+        withdrawals = tx.get("withdraw", 0.0)
+
+        # รวม P&L จาก trades ที่ปิดแล้ว
+        pnl_row = conn.execute("""
+            SELECT COALESCE(SUM(pnl), 0) FROM trades
+            WHERE wallet_type = ? AND status = 'closed' AND pnl IS NOT NULL
+        """, (wallet_type,)).fetchone()
+        total_pnl = pnl_row[0] if pnl_row else 0.0
+
+    return initial + deposits - withdrawals + total_pnl
+
+def add_wallet_transaction(
+    wallet_type: str,
+    tx_type: str,
+    amount: float,
+    note: str = None
+) -> int:
+    """บันทึก deposit หรือ withdraw ลง DB คืนค่า transaction id"""
+    with get_db() as conn:
+        cursor = conn.execute("""
+            INSERT INTO wallet_transactions (wallet_type, type, amount, note, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (wallet_type, tx_type, amount, note, datetime.now().isoformat()))
+        conn.commit()
+        return cursor.lastrowid
+
+def get_wallet_transactions(
+    wallet_type: str = "paper",
+    limit: int = 50
+) -> list:
+    """ดึงประวัติ deposit/withdraw"""
+    with get_db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT id, wallet_type, type, amount, note, created_at
+            FROM wallet_transactions
+            WHERE wallet_type = ?
+            ORDER BY id DESC
+            LIMIT ?
+        """, (wallet_type, limit)).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+def _row_to_dict(row) -> dict:
+    """Convert sqlite3.Row to dict with string keys"""
+    if row is None:
+        return None
+    if hasattr(row, "keys"):
+        return dict(zip(row.keys(), row))
+    return dict(row)
+
+def get_wallet_summary(wallet_type: str = "paper") -> dict:
+    """สรุปยอดกระเป๋า: balance, initial, deposits, withdrawals, pnl"""
+    initial = float(_get_setting(f"{wallet_type}_initial_balance", "100000.0"))
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT type, SUM(amount) as total
+            FROM wallet_transactions
+            WHERE wallet_type = ?
+            GROUP BY type
+        """, (wallet_type,)).fetchall()
+        tx = {r[0]: r[1] for r in rows}
+
+        deposits = tx.get("deposit", 0.0)
+        withdrawals = tx.get("withdraw", 0.0)
+
+        pnl_row = conn.execute("""
+            SELECT COALESCE(SUM(pnl), 0), COUNT(*)
+            FROM trades
+            WHERE wallet_type = ? AND status = 'closed' AND pnl IS NOT NULL
+        """, (wallet_type,)).fetchone()
+        total_pnl = pnl_row[0] if pnl_row else 0.0
+        closed_trades = pnl_row[1] if pnl_row else 0
+
+    current_balance = initial + deposits - withdrawals + total_pnl
+
+    return {
+        "wallet_type": wallet_type,
+        "current_balance": round(current_balance, 2),
+        "initial_balance": round(initial, 2),
+        "total_deposits": round(deposits, 2),
+        "total_withdrawals": round(withdrawals, 2),
+        "total_pnl": round(total_pnl, 2),
+        "closed_trades": closed_trades,
+        "currency": "THB",
+    }
 
 # ── Trader State (in-memory) ────────────────────────────────
 class TraderState:
@@ -172,15 +303,26 @@ class TraderState:
         self.mode = mode
         self.asset = asset
         self.symbols = symbols
-        self.balance = balance
-        self.initial_balance = balance
+
+        wallet_type = "paper" if mode == "paper" else "live"
+        # โหลด balance จาก DB (รวม deposits/withdrawals/P&L ที่เก็บไว้)
+        computed = get_wallet_balance(wallet_type)
+        # balance ที่โหลดได้ = ยอดจริงในกระเป๋า
+        # ถ้า computed == initial (100k มาตรฐาน) แสดงว่าเริ่มใหม่ — ใช้ balance ที่ใส่มาเป็น initial
+        self.initial_balance = computed
+        self.balance = computed
+        # บันทึก initial_balance ลง DB เฉพาะครั้งแรกเท่านั้น (ไม่เขียนทับหลัง deposit/withdraw)
+        existing = _get_setting(f"{wallet_type}_initial_balance")
+        if existing is None:
+            _set_setting(f"{wallet_type}_initial_balance", str(computed))
+
         self.running = True
         self.stop_event.clear()
 
         # เริ่ม trader loop ใน background thread
         self.process = threading.Thread(target=self._run_loop, daemon=True)
         self.process.start()
-        logger.info(f"Trader started: mode={mode}, asset={asset}, balance=${balance}")
+        logger.info(f"Trader started: mode={mode}, asset={asset}, balance={computed}")
 
     def stop(self):
         if not self.running:
@@ -208,8 +350,9 @@ class TraderState:
         wm = WalletManager(paper_initial=self.balance)
         wallet_type = WalletType.LIVE if is_live else WalletType.PAPER
 
-        # ถ้า LIVE ใช้ real exchange, ถ้า PAPER ใช้ testnet
-        exchange = CryptoExchange(testnet=not is_live)
+        # Paper mode: ใช้ real Binance public API สำหรับราคา (paper trade จริงไม่ execute)
+        # Live mode: ใช้ real API พร้อม API key
+        exchange = CryptoExchange(testnet=False)
 
         # Gold ใช้ real API เสมอ (demo เฉพาะถ้า API key ไม่มีจริง)
         gold = GoldPriceFeed()
@@ -265,14 +408,31 @@ class TraderState:
                     )
 
                     if signal:
-                        # ประมวลผลสัญญาณผ่าน paper trader
+                        # ตรวจสอบว่ามี position อยู่แล้วหรือยัง
+                        existing = trader.active_trades.get(symbol)
+                        
+                        # DB check: ป้องกัน race condition เมื่อ position เพิ่งถูกปิด
+                        with get_db() as conn:
+                            conn.row_factory = sqlite3.Row
+                            db_open = conn.execute(
+                                "SELECT 1 FROM trades WHERE symbol=? AND status='open' LIMIT 1",
+                                (symbol,)).fetchone()
+                        
                         if signal.direction.value == "buy":
-                            result = trader.execute_signal(signal)
-                            logger.info(f"SIGNAL BUY [{signal.reasoning}]: {symbol} @ {signal.entry_price}, qty={signal.quantity}")
+                            # ซื้อได้เฉพาะเมื่อยังไม่มี position เปิดอยู่ (memory หรือ DB)
+                            if existing is None and db_open is None:
+                                result = trader.execute_signal(signal)
+                                logger.info(f"SIGNAL BUY [{signal.reasoning}]: {symbol} @ {signal.entry_price}, qty={signal.quantity}")
+                            else:
+                                logger.info(f"[SKIP] {symbol} already has open position, skipping BUY signal")
                         elif signal.direction.value == "sell":
-                            result = trader.close_trade(symbol, price_data.get("price"))
-                            logger.info(f"SIGNAL SELL [{signal.reasoning}]: {symbol} @ {price_data.get('price')}")
-
+                            # ขายได้เฉพาะเมื่อมี position เปิดอยู่
+                            if existing:
+                                result = trader.close_trade(symbol, price_data.get("price"), "signal_sell")
+                                logger.info(f"SIGNAL SELL [{signal.reasoning}]: {symbol} @ {price_data.get('price')}")
+                            else:
+                                logger.info(f"[SKIP] {symbol} no open position to sell")
+                        
                         # อัปเดต stats
                         self._refresh_stats(trader)
 
@@ -293,20 +453,25 @@ class TraderState:
         self.losing_trades = stats.get("losing_trades", self.losing_trades)
 
     def get_status(self) -> dict:
+        # ดึง balance จาก DB เพื่อความถูกต้องเสมอ
+        wtype = "paper" if self.mode == "paper" else "live"
+        db_balance = get_wallet_balance(wtype)
         return {
             "running": self.running,
             "mode": self.mode,
             "asset": self.asset,
             "symbols": self.symbols,
-            "balance": self.balance,
+            "balance": db_balance,
             "initial_balance": self.initial_balance,
         }
 
     def get_stats(self) -> dict:
+        wtype = "paper" if self.mode == "paper" else "live"
+        db_balance = get_wallet_balance(wtype)
         return {
-            "current_balance": self.balance,
+            "current_balance": db_balance,
             "initial_balance": self.initial_balance,
-            "total_pnl": self.balance - self.initial_balance,
+            "total_pnl": db_balance - self.initial_balance,
             "total_trades": self.total_trades,
             "winning_trades": self.winning_trades,
             "losing_trades": self.losing_trades,
@@ -352,31 +517,79 @@ async def get_trader_stats():
     return trader_state.get_stats()
 
 # ── Balance ────────────────────────────────────────────────
+class DepositRequest(BaseModel):
+    amount: float = Field(..., gt=0, description="จำนวนเงินที่เติม")
+    note: Optional[str] = Field(default=None, description="หมายเหตุ")
+
+class WithdrawRequest(BaseModel):
+    amount: float = Field(..., gt=0, description="จำนวนเงินที่ถอน")
+    note: Optional[str] = Field(default=None, description="หมายเหตุ")
+
 @app.get("/api/balance")
 async def get_balance(wallet_type: str = "paper"):
-    """ดึงยอดกระเป๋าตัง — เลือก wallet_type ได้ (paper หรือ live)"""
-    from backend.core.wallet_manager import WalletManager
-    from backend.core.models import WalletType
-
-    wtype = WalletType.LIVE if wallet_type == "live" else WalletType.PAPER
-    wm = WalletManager()
-    wallet = wm.get_wallet(wtype)
-
-    return {
-        "wallet_type": wtype.value,
-        "balance": wallet.balance,
-        "currency": wallet.currency,
-        "initial_balance": wallet.initial_balance,
-        "pnl": wallet.pnl,
-    }
+    """ดึงยอดกระเป๋าตัง — คำนวณจาก DB: initial + deposits - withdrawals + P&L"""
+    return get_wallet_summary(wallet_type)
 
 @app.get("/api/wallets")
 async def get_all_wallets():
     """ดึงยอดทั้งสองกระเป๋าตัง (PAPER + LIVE)"""
-    from backend.core.wallet_manager import WalletManager
+    return {
+        "paper": get_wallet_summary("paper"),
+        "live": get_wallet_summary("live"),
+    }
 
-    wm = WalletManager()
-    return wm.get_summary()
+@app.post("/api/wallet/deposit")
+async def deposit(req: DepositRequest, wallet_type: str = "paper"):
+    """เติมเงินเข้ากระเป๋า — บันทึกลง DB แล้วอัปเดต balance"""
+    if wallet_type not in ("paper", "live"):
+        raise HTTPException(status_code=400, detail="wallet_type must be 'paper' or 'live'")
+
+    tx_id = add_wallet_transaction(wallet_type, "deposit", req.amount, req.note)
+    # อัปเดต in-memory balance
+    trader_state.balance = get_wallet_balance(wallet_type)
+    summary = get_wallet_summary(wallet_type)
+    logger.info(f"[WALLET] Deposit {req.amount} to {wallet_type}: tx_id={tx_id}, new_balance={summary['current_balance']}")
+    return {
+        "success": True,
+        "tx_id": tx_id,
+        "new_balance": summary["current_balance"],
+        "summary": summary,
+    }
+
+@app.post("/api/wallet/withdraw")
+async def withdraw(req: WithdrawRequest, wallet_type: str = "paper"):
+    """ถอนเงินออกจากกระเป๋า — บันทึกลง DB แล้วอัปเดต balance"""
+    if wallet_type not in ("paper", "live"):
+        raise HTTPException(status_code=400, detail="wallet_type must be 'paper' or 'live'")
+
+    current = get_wallet_balance(wallet_type)
+    if current < req.amount:
+        raise HTTPException(status_code=400, detail=f"ไม่มีเงินเพียงพอ: มี {current:.2f} บาท")
+
+    tx_id = add_wallet_transaction(wallet_type, "withdraw", req.amount, req.note)
+    # อัปเดต in-memory balance
+    trader_state.balance = get_wallet_balance(wallet_type)
+    summary = get_wallet_summary(wallet_type)
+    logger.info(f"[WALLET] Withdraw {req.amount} from {wallet_type}: tx_id={tx_id}, new_balance={summary['current_balance']}")
+    return {
+        "success": True,
+        "tx_id": tx_id,
+        "new_balance": summary["current_balance"],
+        "summary": summary,
+    }
+
+@app.get("/api/wallet/transactions")
+async def list_wallet_transactions(wallet_type: str = "paper", limit: int = 50):
+    """ดูประวัติ deposit/withdraw"""
+    return {
+        "wallet_type": wallet_type,
+        "transactions": get_wallet_transactions(wallet_type, limit),
+    }
+
+@app.get("/api/wallet/summary")
+async def wallet_summary(wallet_type: str = "paper"):
+    """สรุปยอดกระเป๋า: balance, initial, deposits, withdrawals, pnl"""
+    return get_wallet_summary(wallet_type)
 
 def _count_open_trades() -> int:
     with get_db() as conn:
@@ -464,11 +677,10 @@ async def close_trade(req: TradeCloseRequest):
         """, (req.exit_price, datetime.now().isoformat(), pnl, pnl_pct, trade["id"]))
         conn.commit()
 
-        # อัปเดต trader state balance
-        status = trader_state.get_status()
-        trader_state.balance += pnl
+        # อัปเดต trader state balance — โหลดจาก DB เพื่อความถูกต้อง
+        trader_state.balance = get_wallet_balance(trade.get("wallet_type", "paper"))
 
-        return _row_to_trade({**dict(trade), "exit_price": req.exit_price, "status": "closed", "pnl": pnl, "pnl_percent": pnl_pct})
+        return _row_to_trade(trade)
 
 @app.post("/api/trade/execute")
 async def execute_trade(signal: dict):
@@ -544,24 +756,34 @@ async def create_manual_trade(req: ManualTradeRequest):
         row = conn.execute("SELECT * FROM trades ORDER BY id DESC LIMIT 1").fetchone()
         return _row_to_trade(row)
 
-def _row_to_trade(row: dict) -> dict:
+def _row_to_trade(row) -> dict:
+    """Convert sqlite3.Row or dict to trade dict with string keys."""
+    if row is None:
+        return None
+    # sqlite3.Row: dict(row) gives {0:val, 1:val,...} — need column names
+    if hasattr(row, "keys"):
+        r = dict(zip(row.keys(), row))
+    else:
+        r = dict(row)
     return {
-        "id": row["id"],
-        "symbol": row["symbol"],
-        "asset_type": row["asset_type"],
-        "wallet_type": row.get("wallet_type", "paper"),
-        "direction": row["direction"],
-        "entry_price": row["entry_price"],
-        "exit_price": row["exit_price"],
-        "quantity": row["quantity"],
-        "stop_loss": row["stop_loss"],
-        "take_profit": row["take_profit"],
-        "status": row["status"],
-        "entry_time": row["entry_time"],
-        "exit_time": row["exit_time"],
-        "trade_number": row["trade_number"],
-        "pnl": row["pnl"],
-        "pnl_percent": row["pnl_percent"],
+        "id": r.get("id"),
+        "symbol": r.get("symbol"),
+        "asset_type": r.get("asset_type"),
+        "wallet_type": r.get("wallet_type", "paper"),
+        "direction": r.get("direction"),
+        "entry_price": r.get("entry_price"),
+        "exit_price": r.get("exit_price"),
+        "quantity": r.get("quantity"),
+        "stop_loss": r.get("stop_loss"),
+        "take_profit": r.get("take_profit"),
+        "status": r.get("status"),
+        "entry_time": r.get("entry_time"),
+        "exit_time": r.get("exit_time"),
+        "trade_number": r.get("trade_number"),
+        "pnl": r.get("pnl"),
+        "pnl_percent": r.get("pnl_percent"),
+        "entry_reason": json.loads(r.get("entry_reason")) if r.get("entry_reason") else None,
+        "exit_reason": json.loads(r.get("exit_reason")) if r.get("exit_reason") else None,
     }
 
 # ── Tickers ────────────────────────────────────────────────
@@ -731,6 +953,30 @@ async def get_news_feed(limit: int = 50, category: str = None, source: str = Non
         raise HTTPException(status_code=500, detail=f"News feed error: {e}")
 
 
+@app.get("/api/news/article/{article_id}")
+async def get_news_article(article_id: int):
+    """
+    ดึงข่าวเดียว by ID พร้อมเนื้อหาเต็ม (แปลไทยแล้ว)
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import get_article_by_id
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    try:
+        article = get_article_by_id(article_id)
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+        return article
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting article {article_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/news/scrape")
 async def trigger_scrape():
     """
@@ -775,6 +1021,155 @@ async def get_trade_signal_endpoint():
     articles = get_articles(limit=100)
     signal = get_trade_signal(articles)
     return signal
+
+
+# ── Archive Endpoints ────────────────────────────────────────
+
+@app.post("/api/news/archive")
+async def run_archive(retention_days: int = 7):
+    """
+    รัน archival process —ย้ายข่าวเก่าไป archive table
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import archive_old_articles
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    result = archive_old_articles(retention_days=retention_days)
+    return result
+
+
+@app.get("/api/news/archive")
+async def get_archive(
+    limit: int = 50,
+    category: str = None,
+    source: str = None,
+):
+    """
+    ดึงข่าวจาก archive
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import get_archived_articles
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    articles = get_archived_articles(limit=limit, category=category, source=source)
+    return {"articles": articles, "total": len(articles)}
+
+
+@app.get("/api/news/archive/stats")
+async def get_archive_stats():
+    """
+    ดึง archive stats
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import get_archive_stats
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    return get_archive_stats()
+
+
+@app.patch("/api/news/archive/policy")
+async def update_archive_policy(retention_days: int = 7):
+    """
+    ตั้ง retention period (จำนวนวันที่เก็บข่าวใน main table)
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import set_archive_retention
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    return set_archive_retention(days=retention_days)
+
+
+# ── AI Translation & Impact Analysis ─────────────────────────────
+
+@app.post("/api/news/process-pending")
+async def process_pending_articles(threshold_hours: int = 24):
+    """
+    หาข่าวที่ยังไม่ได้แปลหรือยังไม่ได้วิเคราะห์ impact
+    แล้ว process (translate + impact reasoning) ทั้งหมด
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import translate_and_analyze_pending
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    try:
+        results = translate_and_analyze_pending(threshold_hours=threshold_hours)
+        return {
+            "status": "ok",
+            "processed": len(results),
+            "results": results,
+        }
+    except Exception as e:
+        logger.error(f"Process pending error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/news/article/{article_id}/translate")
+async def translate_article(article_id: int):
+    """
+    แปลข่าวเดียวเป็นภาษาไทย + วิเคราะห์ impact
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import process_article_with_ai
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    try:
+        result = process_article_with_ai(article_id)
+        if "error" in result and result["error"] == "Article not found":
+            raise HTTPException(status_code=404, detail="Article not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Translate error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news/article/{article_id}/impact")
+async def get_article_impact(article_id: int):
+    """
+    ดึง impact reasoning ของข่าวเดียว
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scraper.news_scraper import get_article_by_id
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+
+    article = get_article_by_id(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    return {
+        "id": article["id"],
+        "title": article["title"],
+        "source": article["source"],
+        "impact_reasoning": article.get("impact_reasoning"),
+        "impact_sentiment": article.get("impact_sentiment", "neutral"),
+        "impact_risk": article.get("impact_risk", "low"),
+        "impact_tags": article.get("impact_tags", []),
+        "content_th": article.get("content_th", "")[:500] if article.get("content_th") else None,
+        "has_translation": bool(article.get("content_th")),
+        "has_impact_analysis": bool(article.get("impact_reasoning")),
+    }
 
 
 # ── Run Server ─────────────────────────────────────────────

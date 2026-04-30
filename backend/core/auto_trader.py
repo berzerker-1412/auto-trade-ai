@@ -12,7 +12,7 @@
 import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 
 from .models import TradeSignal, Trade, TradeStatus, TradeDirection, AssetType, WalletType
 from .trader import Trader
@@ -243,7 +243,7 @@ class AutoTrader:
         
         self.position_sizer.update_portfolio_value(self.trader.wallet.balance)
         
-        # ✅ บันทึกเหตุผลเปิด trade
+        # ✅ บันทึกเหตุผลเปิด trade ลง DB
         self.reasoner.log_entry(
             trade_id=str(trade.id or trade.trade_number),
             trade_number=trade.trade_number,
@@ -261,8 +261,16 @@ class AutoTrader:
             indicators=indicators,
         )
         
-        # ✅ พิมพ์เหตุผลเปิด trade
+        # ✅ เซฟ entry_reason ลง DB
         log = self.reasoner.get_trade_reason(str(trade.id or trade.trade_number))
+        if log and log.entry:
+            import json
+            self.trader.logger.update_trade_reason(
+                trade_id=trade.id,
+                entry_reason=json.dumps(asdict(log.entry), ensure_ascii=False)
+            )
+        
+        # ✅ พิมพ์เหตุผลเปิด trade
         if log and log.entry:
             print()
             print(log.entry.summary)
@@ -384,8 +392,16 @@ class AutoTrader:
                 trailing_info=trailing_info,
             )
             
-            # ✅ พิมพ์เหตุผลปิด trade
+            # ✅ เซฟ exit_reason ลง DB
             log = self.reasoner.get_trade_reason(str(trade.id or trade.trade_number))
+            if log and log.exit:
+                import json
+                self.trader.logger.update_trade_reason(
+                    trade_id=trade.id,
+                    exit_reason=json.dumps(asdict(log.exit), ensure_ascii=False)
+                )
+            
+            # ✅ พิมพ์เหตุผลปิด trade
             if log and log.exit:
                 print()
                 print(log.exit.summary)

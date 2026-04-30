@@ -402,6 +402,13 @@ export const api = {
     if (USE_MOCK) return MOCK_NEWS_SIGNAL;
     return fetchAPI("/api/news/signal");
   },
+
+  async getNewsArticle(id: number): Promise<NewsArticle> {
+    if (USE_MOCK) {
+      return MOCK_NEWS_ARTICLES.find((a) => a.id === id) || MOCK_NEWS_ARTICLES[0];
+    }
+    return fetchAPI(`/api/news/article/${id}`);
+  },
 };
 
 // ── Mock Data ────────────────────────────────────────────────
@@ -499,6 +506,7 @@ interface NewsArticle {
   published_at: string | null;
   summary: string;
   content: string;
+  content_th?: string;     // เนื้อหาแปลไทย
   sentiment_score: number;
   sentiment_label: "positive" | "negative" | "neutral";
   impact_tags: string[];

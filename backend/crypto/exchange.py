@@ -37,10 +37,9 @@ class CryptoExchange:
             config["secret"] = api_secret
         
         if self.testnet:
-            # Binance testnet
-            config["urls"] = {
-                "api": "https://testnet.binance.vision/api"
-            }
+            # Paper trading: ใช้ real Binance spot API แต่ไม่มี API key = trade จริงไม่ทำงาน
+            # CCXT จะ fallback ไปใช้ public endpoints อยู่แล้ว
+            pass
         
         return exchange_class(config)
     

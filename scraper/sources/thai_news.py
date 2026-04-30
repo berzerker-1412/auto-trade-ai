@@ -95,6 +95,26 @@ class ThaiNewsScraper(BaseScraper):
             summary = " ".join(p.get_text(strip=True) for p in paras if p.get_text(strip=True))
             summary = summary[:300] + "..." if len(summary) > 300 else summary
 
+        # ดึง content เต็ม
+        content = ""
+        if article_body:
+            paras = article_body.select("p")
+            content_parts = []
+            for p in paras:
+                text = p.get_text(strip=True)
+                if text and len(text) > 30:
+                    content_parts.append(text)
+            content = "\n\n".join(content_parts)
+
+        # ถ้าได้ content น้อยกว่า threshold ใช้ Playwright ดึงใหม่
+        if not content or len(content) < self.MIN_CONTENT_LENGTH:
+            full_text = self.extract_full_article(url)
+            if full_text and len(full_text) > len(content):
+                content = full_text
+
+        if not content:
+            content = summary
+
         combined = (title + " " + summary).lower()
         impact_tags = self._detect_impact_tags(combined)
 
@@ -105,6 +125,7 @@ class ThaiNewsScraper(BaseScraper):
             category=self._categorize(combined),
             published_at=published_at,
             summary=summary,
+            content=content,
             sentiment_score=0.0,
             impact_tags=impact_tags,
         )

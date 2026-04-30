@@ -98,14 +98,34 @@ class TradeLogger:
                 UPDATE trades SET
                     exit_price = ?,
                     status = ?,
-                    exit_time = ?
+                    exit_time = ?,
+                    pnl = ?,
+                    pnl_percent = ?
                 WHERE id = ?
             """, (
                 trade.exit_price,
                 trade.status.value,
                 trade.exit_time.isoformat() if trade.exit_time else None,
+                trade.pnl,
+                trade.pnl_percent,
                 trade.id
             ))
+            conn.commit()
+
+    def update_trade_reason(self, trade_id: int, entry_reason: str = None, exit_reason: str = None):
+        """บันทึก entry/exit reason เป็น JSON ลง trades table"""
+        with self._get_conn() as conn:
+            if entry_reason is not None:
+                conn.execute(
+                    "UPDATE trades SET entry_reason = ? WHERE id = ?",
+                    (entry_reason, trade_id)
+                )
+            if exit_reason is not None:
+                conn.execute(
+                    "UPDATE trades SET exit_reason = ? WHERE id = ?",
+                    (exit_reason, trade_id)
+                )
+            conn.commit()
     
     def get_open_trades(
         self,

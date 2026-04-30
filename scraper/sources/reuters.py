@@ -64,14 +64,42 @@ class ReutersScraper(BaseScraper):
             except Exception:
                 pass
 
-        # ดึง summary / lede
+        # ดึง summary (lede แรกๆ)
         summary = ""
         lede = soup.select_one("[data-testid='article-lede']") or soup.select_one(".article-body") or soup.select_one("article")
         if lede:
-            # ดึง paragraph แรกๆ สำหรับ summary
             paras = lede.select("p")[:3]
             summary = " ".join(p.get_text(strip=True) for p in paras if p.get_text(strip=True))
             summary = summary[:300] + "..." if len(summary) > 300 else summary
+
+        # ดึง content เต็ม — ทุก paragraph ใน article body
+        content = ""
+        article_body = (
+            soup.select_one("[data-testid='article-body']")
+            or soup.select_one(".article-body")
+            or soup.select_one("article")
+            or soup.select_one("div[data-element='story-body']")
+        )
+        if article_body:
+            # เอาทุก paragraph ที่มี text
+            paras = article_body.select("p")
+            content_parts = []
+            for p in paras:
+                text = p.get_text(strip=True)
+                # ข้าม tiny paragraphs (likely captions, credits)
+                if text and len(text) > 30:
+                    content_parts.append(text)
+            content = "\n\n".join(content_parts)
+
+        # ถ้าได้ content น้อยกว่า threshold ใช้ Playwright ดึงใหม่
+        if not content or len(content) < self.MIN_CONTENT_LENGTH:
+            full_text = self.extract_full_article(url)
+            if full_text and len(full_text) > len(content):
+                content = full_text
+
+        # ถ้าไม่มี content ใช้ summary เป็น fallback
+        if not content:
+            content = summary
 
         # ตรวจหา impact tags
         impact_tags = self._detect_impact_tags(title + " " + summary)
@@ -83,7 +111,8 @@ class ReutersScraper(BaseScraper):
             category=self._categorize(title, summary),
             published_at=published_at,
             summary=summary,
-            sentiment_score=0.0,  # จะคำนวฯทีหลัง
+            content=content,  # ตอนนี้มี full content แล้ว
+            sentiment_score=0.0,
             impact_tags=impact_tags,
         )
 
