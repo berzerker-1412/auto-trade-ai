@@ -4,61 +4,87 @@
 
 # --- Data Sources ---
 data:
-  # Gold (XAUUSD) — real API or demo
   gold:
-    provider: "alpha_vantage"  # real data source
-    api_key: "${ALPHA_VANTAGE_API_KEY}"  # set in .env
-    demo_mode: false  # set true only if no API key
-    cache_ttl: 60  # seconds
+    provider: "alpha_vantage"
+    api_key: "${ALPHA_VANTAGE_API_KEY}"
+    demo_mode: false
+    cache_ttl: 60
 
-  # Crypto — real data from Binance
   crypto:
     provider: "binance"
-    testnet: false  # set true for paper trading on testnet
+    testnet: false
 
 # --- Wallets ---
 wallets:
   paper:
-    initial_balance: 100000.0  # USDT
+    initial_balance: 100000.0
     currency: "USDT"
     enabled: true
 
   live:
     currency: "USDT"
     enabled: true
-    # Balance pulled from exchange API at runtime
-    # Set exchange API keys in .env
 
 # --- Trading Rules ---
 trading:
   risk:
-    max_position_pct: 0.10      # max 10% of wallet per trade
-    stop_loss_pct: 0.02         # -2% stop loss
-    take_profit_pct: 0.05       # +5% take profit
-    confidence_threshold: 0.75   # AI confidence >= 0.75
+    max_position_pct: 0.10         # max 10% of wallet per position
+    max_risk_per_trade: 0.02       # 2% portfolio risk per trade
+    stop_loss_pct: 0.02            # -2% default stop loss
+    take_profit_pct: 0.05          # +5% default take profit
+    confidence_threshold: 0.70     # AI confidence >= 0.70
+
+  # ---- Position Sizing ----
+  sizing:
+    method: "kelly"               # kelly | volatility_adjusted | risk_parity | fixed_fractional
+    kelly_variant: "half"         # full | half | quarter
+
+  # ---- Risk Limits ----
+  limits:
+    max_drawdown_pct: 0.20        # 20% max drawdown → STOP
+    max_daily_loss_pct: 0.03      # 3% daily loss → pause
+    max_weekly_loss_pct: 0.08     # 8% weekly loss → pause
+    max_consecutive_losses: 5     # 5 losses in a row → pause
+
+  # ---- Trailing Stop ----
+  trailing_stop:
+    enabled: true
+    method: "percentage"           # percentage | atr | fixed
+    trail_pct: 0.02                # 2% trailing distance
+    activation_pct: 0.01          # activate after 1% profit
+
+  # ---- Regime Detection ----
+  regime_detection:
+    enabled: true
+    adx_trending_threshold: 25.0  # ADX > 25 = trending
 
   assets:
     gold:
       symbols: ["XAUUSD"]
-      max_positions: 2          # simultaneous positions
+      max_positions: 2
+      vol_annual: 0.15             # 15% annual volatility
     crypto:
       symbols: ["BTCUSDT", "ETHUSDT"]
       max_positions: 3
+      vol_annual:
+        BTCUSDT: 0.70
+        ETHUSDT: 0.85
 
 # --- AI Signal Generation ---
 ai:
-  model: "gpt-4o"
-  provider: "openai"
-  api_key: "${OPENAI_API_KEY}"  # set in .env
+  model: "MiniMax-Text-01"
+  provider: "minimax"
+  api_key: "${MINIMAX_API_KEY}"
   system_prompt: "config/system_prompt.md"
 
-  # Technical analysis settings
   technical:
     indicators:
       - "RSI"
       - "MACD"
       - "Bollinger Bands"
       - "Moving Averages"
+      - "ATR"
+      - "ADX"
     default_interval: "1h"
     lookback_periods: 100
 
@@ -67,7 +93,7 @@ exchange:
   binance:
     api_key: "${BINANCE_API_KEY}"
     api_secret: "${BINANCE_API_SECRET}"
-    testnet: false  # set true to use Binance testnet
+    testnet: false
 
 # --- Logging ---
 logging:
