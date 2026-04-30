@@ -10,11 +10,13 @@ import {
   TrendingUp,
   Wallet,
   BarChart2,
+  Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Live Market", href: "/live", icon: Radio },
   { name: "Analysis", href: "/analysis", icon: BarChart2 },
   { name: "Trade History", href: "/history", icon: History },
   { name: "Paper Trade", href: "/trade", icon: Play },

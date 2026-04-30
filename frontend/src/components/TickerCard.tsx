@@ -1,6 +1,7 @@
 "use client";
 
-import { cn, formatCurrency, formatNumber } from "@/lib/utils";
+import { useEffect, useRef, useState } from "react";
+import { cn, formatCurrency } from "@/lib/utils";
 import { Ticker } from "@/types";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
@@ -10,17 +11,36 @@ interface TickerCardProps {
 }
 
 export function TickerCard({ ticker, onClick }: TickerCardProps) {
+  const [flashClass, setFlashClass] = useState("");
+  const prevPriceRef = useRef<number | null>(null);
   const isCrypto = ticker.symbol !== "XAUUSD";
   const priceChange = ticker.high - ticker.low;
   const priceChangePercent = ((priceChange / ticker.low) * 100).toFixed(2);
-  const isPositive = Math.random() > 0.3; // Mock for demo
+  const isPositive = parseFloat(priceChangePercent) >= 0;
+
+  // กระพริบเมื่อราคาเปลี่ยน
+  useEffect(() => {
+    if (prevPriceRef.current === null) {
+      prevPriceRef.current = ticker.price;
+      return;
+    }
+    if (ticker.price > prevPriceRef.current) {
+      setFlashClass("ring-1 ring-emerald-500/40");
+      setTimeout(() => setFlashClass(""), 600);
+    } else if (ticker.price < prevPriceRef.current) {
+      setFlashClass("ring-1 ring-red-500/40");
+      setTimeout(() => setFlashClass(""), 600);
+    }
+    prevPriceRef.current = ticker.price;
+  }, [ticker.price]);
 
   return (
     <div
       onClick={onClick}
       className={cn(
         "rounded-xl bg-gray-900/50 backdrop-blur-xl border border-gray-800 p-4 cursor-pointer hover:border-emerald-500/50 transition-all",
-        onClick && "cursor-pointer"
+        onClick && "cursor-pointer",
+        flashClass
       )}
     >
       <div className="flex items-start justify-between">
