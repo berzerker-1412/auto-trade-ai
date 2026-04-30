@@ -9,11 +9,13 @@ import {
   Settings,
   TrendingUp,
   Wallet,
+  BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Analysis", href: "/analysis", icon: BarChart2 },
   { name: "Trade History", href: "/history", icon: History },
   { name: "Paper Trade", href: "/trade", icon: Play },
   { name: "Settings", href: "/settings", icon: Settings },
