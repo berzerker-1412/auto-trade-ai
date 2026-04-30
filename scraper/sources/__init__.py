@@ -4,11 +4,13 @@ scraper/sources/__init__.py — ตัวดึงข่าวจากแหล
 from .reuters import ReutersScraper
 from .bloomberg import BloombergScraper
 from .bbc import BBCScraper
-from .thai_news import ThaiNewsScraper
+from .cnbc import CnbcScraper
+from .yahoo_finance import YahooFinanceScraper
 
+# เรียงตามความสำคัญ: financial news ก่อน, general news หลัง
 ALL_SCRAPERS = [
+    CnbcScraper,
+    YahooFinanceScraper,
     ReutersScraper,
-    BloombergScraper,
     BBCScraper,
-    ThaiNewsScraper,
 ]

@@ -8,6 +8,23 @@ import re
 
 # ── Lexicon สำหรับข่าวการเงิน/สงคราม ────────────────────────────
 
+HIGH_IMPACT_PAIRS = {
+    # คริปโตเฉพาะ
+    ("bitcoin", "etf"): 0.8, ("bitcoin", "approval"): 0.9, ("bitcoin", "spot"): 0.9,
+    ("sec", "bitcoin"): 0.8, ("binance", " lawsuit"): -0.8, ("coinbase", "sec"): -0.7,
+    ("crypto", "regulation"): -0.5, ("fed", "rate"): -0.4, ("federal", "reserve"): -0.3,
+    ("rate", "hike"): -0.6, ("rate", "cut"): 0.6, ("inflation", "hot"): -0.7,
+    ("inflation", "cool"): 0.5, ("cpi", "higher"): -0.6, ("cpi", "lower"): 0.5,
+    ("treasury", "yield"): -0.4, ("dollar", "strong"): -0.5, ("dollar", "weak"): 0.5,
+    ("china", "economy"): -0.4, ("china", "stimulus"): 0.6,
+    ("spot", "etf"): 0.8, ("institutional", "buy"): 0.7,
+    # ทองเฉพาะ
+    ("gold", "record"): 0.8, ("gold", "high"): 0.7, ("gold", "surge"): 0.7,
+    ("xauusd", "high"): 0.7, ("safe haven",): 0.6, ("central bank", "gold"): 0.7,
+    ("geopolitical", "risk"): 0.5, ("tension", "middle east"): -0.5,
+    ("oil", "spike"): -0.4, ("energy", "crisis"): -0.4,
+}
+
 POSITIVE_WORDS = {
     # การเงิน/ตลาด
     "bullish": 0.6, "rally": 0.5, "surge": 0.6, "soar": 0.7, "jump": 0.4,
@@ -77,6 +94,14 @@ def analyze_sentiment(text: str) -> Tuple[float, List[str]]:
     score = 0.0
     matches = []
 
+    # 1. Check high-impact keyword pairs ก่อน (ให้ weight สูงสุด)
+    for kw_pair, weight in HIGH_IMPACT_PAIRS.items():
+        kw1, kw2 = kw_pair if len(kw_pair) == 2 else (kw_pair[0], None)
+        if kw1 in text_lower and (kw2 is None or kw2 in text_lower):
+            score += weight
+            matches.append(f"pair:{kw1}")
+
+    # 2. Single-word scoring
     for word in words:
         if word in POSITIVE_WORDS:
             score += POSITIVE_WORDS[word]
@@ -85,10 +110,19 @@ def analyze_sentiment(text: str) -> Tuple[float, List[str]]:
             score += NEGATIVE_WORDS[word]
             matches.append(f"-{word}")
 
-    # Normalize ไม่ให้เกิน ±1.0
-    score = max(-1.0, min(1.0, score / max(1, len(words) * 0.5)))
+    # Normalize: หารด้วย sqrt(word_count) แทน — รักษา sentiment strength ไว้
+    # แต่ละ keyword มี weight สูงอยู่แล้ว (0.3-0.9) ไม่ต้องลดทอนมาก
+    # Amp factor 3 เพื่อให้คะแนนจริงอยู่ในช่วง -1 ถึง 1
+    score = max(-1.0, min(1.0, score / max(1, len(words) ** 0.5) * 3))
 
     return score, matches
+
+
+# แหล่งข่าวที่เป็นการเงิน/ตลาด (ใช้สำหรับ sentiment)
+FINANCIAL_SOURCES = {"Reuters", "Bloomberg", "BBC", "CNBC", "Investing.com", "CoinDesk", "The Block", "CoinTelegraph"}
+
+# แหล่งข่าวไทย (ไม่ใช้สำหรับ sentiment เพราะ lexicon เป็น English)
+THAI_SOURCES = {"Thairath", "Naewna", "Matichon", "Bangkok Post", "The Nation", "Thai News"}
 
 
 def get_trade_signal(articles: List[Dict]) -> Dict:
@@ -96,9 +130,9 @@ def get_trade_signal(articles: List[Dict]) -> Dict:
     สร้าง trade signal จากข่าวทั้งหมดที่เก็บมา
 
     Logic:
-    - รวม sentiment ของข่าวทั้งหมด
-    - ถ้า sentiment เฉลี่ย > 0.2 = BUY bias
-    - ถ้า sentiment เฉลี่ย < -0.2 = SELL bias
+    - Filter ข่าวที่มี |sentiment| < 0.05 ออก (noisy general news)
+    - ถ้า sentiment เฉลี่ย > 0.15 = BUY bias
+    - ถ้า sentiment เฉลี่ย < -0.15 = SELL bias
     - ถ้าเป็นข่าว war ที่กระทบ XAUUSD → พิจารณา long gold
     - ถ้าเป็นข่าว crypto ที่ positive → long crypto
     - ถ้าเป็นข่าว rate hike → กระทบ USD
@@ -113,14 +147,38 @@ def get_trade_signal(articles: List[Dict]) -> Dict:
             "risk_level": "low",
         }
 
-    total_sentiment = sum(a.get("sentiment_score", 0) for a in articles)
-    avg_sentiment = total_sentiment / len(articles)
+    # Filter: เอาเฉพาะข่าวจาก financial sources ก่อน (ถ้ามี)
+    financial_articles = [a for a in articles if a.get("source", "") in FINANCIAL_SOURCES]
+    if financial_articles:
+        use_articles = financial_articles
+    else:
+        # ไม่มี financial news → ใช้ทั้งหมดแต่ต้องมี sentiment ที่ดี
+        use_articles = articles
+
+    # Filter ข่าวที่ไม่มี sentiment ชัดเจน (|score| < 0.05 = noise)
+    signal_articles = [a for a in use_articles if abs(a.get("sentiment_score", 0)) >= 0.05]
+
+    # ถ้าข่าวที่มี signal มีน้อยกว่า 30% ของทั้งหมด → ใช้ทั้งหมดแต่ลด threshold
+    use_articles = signal_articles if len(signal_articles) >= len(use_articles) * 0.3 else use_articles
+    if not use_articles:
+        use_articles = articles
+
+    total_sentiment = sum(a.get("sentiment_score", 0) for a in use_articles)
+    avg_sentiment = total_sentiment / len(use_articles)
+
+    # ถ้าข่าวส่วนใหญ่เป็น high-impact ให้เพิ่ม weighting
+    high_impact_count = sum(1 for a in use_articles if abs(a.get("sentiment_score", 0)) >= 0.3)
+    if high_impact_count > 0:
+        # Weighted average: ให้ high-impact มี influence มากขึ้น
+        weighted_sum = sum(a.get("sentiment_score", 0) * (1 if abs(a.get("sentiment_score", 0)) < 0.3 else 2) for a in use_articles)
+        total_weight = len(use_articles) + high_impact_count
+        avg_sentiment = weighted_sum / total_weight
 
     # นับข่าวตาม category
     category_count: Dict[str, int] = {}
     asset_impact: Dict[str, List[float]] = {}
 
-    for article in articles:
+    for article in use_articles:
         cat = article.get("category", "general")
         category_count[cat] = category_count.get(cat, 0) + 1
 
@@ -138,38 +196,39 @@ def get_trade_signal(articles: List[Dict]) -> Dict:
 
     # ระดับความเสี่ยง
     war_count = category_count.get("war", 0)
-    if war_count >= 3:
+    high_impact_news_count = sum(1 for a in use_articles if abs(a.get("sentiment_score", 0)) >= 0.4)
+    if war_count >= 3 or high_impact_news_count >= 5:
         risk_level = "high"
-    elif war_count >= 1:
+    elif war_count >= 1 or high_impact_news_count >= 2:
         risk_level = "medium"
     else:
         risk_level = "low"
 
-    # ตัดสินใจ
-    if avg_sentiment > 0.2:
+    # ตัดสินใจ — threshold ลดลงเป็น ±0.10 (paper trade: ต้องการ signal บ่อยขึ้น)
+    if avg_sentiment > 0.10:
         bias = "bullish"
         top_assets = sorted(asset_scores.items(), key=lambda x: x[1], reverse=True)[:3]
         signal = {
             "direction": "buy",
             "top_assets": [a[0] for a in top_assets],
-            "confidence": min(abs(avg_sentiment) * 2, 1.0),
+            "confidence": min(abs(avg_sentiment) * 3.0, 1.0),
         }
-        reason = f"Positive sentiment ({avg_sentiment:.2f}) from {len(articles)} articles"
-    elif avg_sentiment < -0.2:
+        reason = f"Positive sentiment ({avg_sentiment:.2f}) from {len(use_articles)} articles"
+    elif avg_sentiment < -0.10:
         bias = "bearish"
         top_assets = sorted(asset_scores.items(), key=lambda x: x[1])[:3]
         signal = {
             "direction": "sell",
             "top_assets": [a[0] for a in top_assets],
-            "confidence": min(abs(avg_sentiment) * 2, 1.0),
+            "confidence": min(abs(avg_sentiment) * 3.0, 1.0),
         }
-        reason = f"Negative sentiment ({avg_sentiment:.2f}) from {len(articles)} articles"
+        reason = f"Negative sentiment ({avg_sentiment:.2f}) from {len(use_articles)} articles"
     else:
         bias = "neutral"
         signal = None
         reason = f"Neutral sentiment ({avg_sentiment:.2f})"
 
-    # War news เพิ่ม risk-off signal
+    # War news เพิ่ม risk-off signal สำหรับ gold
     if war_count >= 2:
         if "XAUUSD" in asset_scores or "GOLD" in asset_scores:
             signal = signal or {"direction": "buy", "top_assets": ["XAUUSD"], "confidence": 0.5}
@@ -185,5 +244,6 @@ def get_trade_signal(articles: List[Dict]) -> Dict:
         "asset_sentiments": {k: round(v, 3) for k, v in asset_scores.items()},
         "category_breakdown": category_count,
         "risk_level": risk_level,
-        "article_count": len(articles),
+        "article_count": len(use_articles),
+        "high_impact_count": high_impact_count,
     }

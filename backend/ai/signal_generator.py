@@ -179,56 +179,116 @@ Technical Analysis:
         news_signal: Optional[Dict[str, Any]] = None,
     ) -> Optional[TradeSignal]:
         """
-        Fallback signal generation using simple heuristics
-        ปรับ direction ตาม news sentiment ถ้ามีข้อมูลข่าว
+        Rules-based fallback signal generation — แทนที่จะ random
+        ใช้ trend + RSI-like momentum + news bias รวมกัน
         """
-        import random
-
         price = market_data.get("price", 0)
+        high = market_data.get("high", 0)
+        low = market_data.get("low", 0)
+        volume = market_data.get("volume", 0)
+
         if price == 0:
             return None
 
-        # ถ้ามี news signal ให้ใช้เป็น bias หลัก
-        if news_signal:
-            bias = news_signal.get("bias", "neutral")
-            score = news_signal.get("score", 0)
-            impacted = news_signal.get("impacted_assets", [])
+        # ── 1. คำนวณ trend จาก high/low vs price ──────────────
+        # ถ้าราคาอยู่ในครึ่งบนของ daily range → bullish bias
+        daily_range = high - low if high > low else price * 0.02
+        if daily_range > 0:
+            price_position = (price - low) / daily_range  # 0 = ก้น, 1 = ยอด
+        else:
+            price_position = 0.5
 
-            # ตรวจสอบว่า symbol ที่กำลังดูกระทบกับข่าวไหม
+        if price_position > 0.65:
+            trend_score = 1  # ในครึ่งบน → uptrend
+        elif price_position < 0.35:
+            trend_score = -1  # ในครึ่งล่าง → downtrend
+        else:
+            trend_score = 0  # กลาง → sideways
+
+        # ── 2. คำนวณ momentum (RSI-like) จาก price position ────
+        # price_position ใกล้ 1 = overbought (RSI-like > 70) แต่เฉพาะเมื่อ trend ไม่ได้ bullish อยู่แล้ว
+        # price_position ใกล้ 0 = oversold (RSI-like < 30) แต่เฉพาะเมื่อ trend ไม่ได้ bearish อยู่แล้ว
+        rsi_approx = price_position * 100  # 0-100 scale
+        if rsi_approx > 75 and trend_score <= 0:
+            momentum_score = -1  # overbought → sell bias (เฉพาะถ้าไม่ได้อยู่ใน uptrend)
+        elif rsi_approx < 25 and trend_score >= 0:
+            momentum_score = 1  # oversold → buy bias (เฉพาะถ้าไม่ได้อยู่ใน downtrend)
+        else:
+            momentum_score = 0
+
+        # ── 3. News bias ────────────────────────────────────────
+        news_score = 0.0
+        if news_signal:
+            score = news_signal.get("score", 0)
+            bias = news_signal.get("bias", "neutral")
+            impacted = news_signal.get("impacted_assets", [])
+            risk_level = news_signal.get("risk_level", "low")
+
+            # ตรวจสอบว่า symbol กระทบกับข่าวไหม
             symbol_lower = symbol.lower()
             is_impacted = any(
                 tag.lower() in symbol_lower or symbol_lower in tag.lower()
                 for tag in impacted
             )
 
-            if is_impacted:
-                # มีข่าวกระทบ symbol นี้โดยตรง
-                if bias == "bullish" and score > 0.2:
-                    direction = TradeDirection.BUY
-                    confidence = min(0.6 + abs(score) * 0.3, 0.95)
-                    reasoning = f"News bullish ({score:+.2f}) for {symbol}"
-                elif bias == "bearish" and score < -0.2:
-                    direction = TradeDirection.SELL
-                    confidence = min(0.6 + abs(score) * 0.3, 0.95)
-                    reasoning = f"News bearish ({score:+.2f}) for {symbol}"
-                else:
-                    direction = random.choice([TradeDirection.BUY, TradeDirection.SELL])
-                    confidence = 0.55
-                    reasoning = "No strong news bias, random direction"
-            else:
-                # ไม่กระทบโดยตรง ใช้ random
-                direction = random.choice([TradeDirection.BUY, TradeDirection.SELL])
-                confidence = 0.55
-                reasoning = "Symbol not directly impacted by current news"
-        else:
-            # ไม่มี news signal — ใช้ random
-            direction = random.choice([TradeDirection.BUY, TradeDirection.SELL])
-            confidence = random.uniform(0.6, 0.9)
-            reasoning = "Fallback signal — configure MiniMax for better signals"
+            if is_impacted or not impacted:
+                if bias == "bullish" and abs(score) > 0.1:
+                    news_score = min(score * 2, 1.0)
+                elif bias == "bearish" and abs(score) > 0.1:
+                    news_score = max(score * 2, -1.0)
 
-        # ใช้ notional $50 ต่อ trade (5% ของ $1000 balance)
-        # BTC: 50/76000 ≈ 0.0007, ETH: 50/2260 ≈ 0.022, XAU: 50/2345 ≈ 0.021
-        trade_notional = 50.0
+            # Risk-off environment: ถ้า risk=high และเป็น gold ให้ buy bias
+            if risk_level == "high" and "XAU" in symbol:
+                news_score = max(news_score, 0.4)
+
+        # ── 4. รวม scores ────────────────────────────────────────
+        # trend: 30%, momentum: 30%, news: 40%
+        combined = (trend_score * 0.3) + (momentum_score * 0.3) + (news_score * 0.4)
+
+        # ถ้า combined ใกล้ 0 → skip ไม่ trade (sideways/no signal)
+        if abs(combined) < 0.15:
+            return None
+
+        # ── 5. ตัดสินใจ direction + confidence ──────────────────
+        if combined > 0.15:
+            direction = TradeDirection.BUY
+            confidence = min(0.60 + abs(combined) * 0.25, 0.85)
+            reasoning_parts = []
+            if trend_score > 0:
+                reasoning_parts.append("price in upper range")
+            if momentum_score > 0:
+                reasoning_parts.append("oversold bounce")
+            if news_score > 0:
+                reasoning_parts.append(f"news bullish ({news_score:+.2f})")
+            reasoning = "Fallback BUY: " + ", ".join(reasoning_parts) if reasoning_parts else "Fallback BUY: combined signal"
+        else:
+            direction = TradeDirection.SELL
+            confidence = min(0.60 + abs(combined) * 0.25, 0.85)
+            reasoning_parts = []
+            if trend_score < 0:
+                reasoning_parts.append("price in lower range")
+            if momentum_score < 0:
+                reasoning_parts.append("overbought reversal")
+            if news_score < 0:
+                reasoning_parts.append(f"news bearish ({news_score:+.2f})")
+            reasoning = "Fallback SELL: " + ", ".join(reasoning_parts) if reasoning_parts else "Fallback SELL: combined signal"
+
+        # ── 6. Stop loss / Take profit ──────────────────────────
+        # Gold: tighter SL (0.8%), wider TP (2%)
+        # Crypto: wider SL (1.5%), wider TP (4%)
+        if asset_type == AssetType.GOLD:
+            sl_pct = 0.008
+            tp_pct = 0.020
+        else:
+            sl_pct = 0.015
+            tp_pct = 0.040
+
+        stop_loss = round(price * (1 - sl_pct), 2) if direction == TradeDirection.BUY else round(price * (1 + sl_pct), 2)
+        take_profit = round(price * (1 + tp_pct), 2) if direction == TradeDirection.BUY else round(price * (1 - tp_pct), 2)
+
+        # ── 7. Position sizing ───────────────────────────────────
+        # 10% ของ balance ต่อ trade ($100 จาก $1000)
+        trade_notional = 100.0
         quantity = round(trade_notional / price, 6) if price > 0 else 0.001
 
         if confidence < self.confidence_threshold:
@@ -240,8 +300,8 @@ Technical Analysis:
             direction=direction,
             entry_price=price,
             quantity=quantity,
-            stop_loss=price * 0.98 if direction == TradeDirection.BUY else price * 1.02,
-            take_profit=price * 1.05 if direction == TradeDirection.BUY else price * 0.95,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
             confidence=confidence,
             reasoning=reasoning,
         )

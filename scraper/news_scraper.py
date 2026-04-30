@@ -347,9 +347,15 @@ def translate_content_to_thai(content: str) -> str:
     import os
     import sys
     from pathlib import Path
+    from dotenv import load_dotenv
 
     if not content or len(content.strip()) < 10:
         return content
+
+    # โหลด .env ก่อน (ระบุ path แบบ absolute)
+    from pathlib import Path
+    hermes_env = Path.home() / ".hermes" / ".env"
+    load_dotenv(hermes_env)
 
     # เพิ่ม backend path เพื่อ import MiniMaxChatClient
     backend_path = Path(__file__).parent.parent / "backend"
@@ -357,7 +363,7 @@ def translate_content_to_thai(content: str) -> str:
         sys.path.insert(0, str(backend_path))
 
     try:
-        from ai.minimax_client import MiniMaxChatClient
+        from backend.ai.minimax_client import MiniMaxChatClient
 
         client = MiniMaxChatClient(
             api_key=os.getenv("MINIMAX_API_KEY", ""),
@@ -397,6 +403,7 @@ def analyze_market_impact(title: str, content: str, tags: List[str]) -> Dict[str
     import os
     import sys
     from pathlib import Path
+    from dotenv import load_dotenv
 
     if not title:
         return {
@@ -406,13 +413,18 @@ def analyze_market_impact(title: str, content: str, tags: List[str]) -> Dict[str
             "risk_level": "low",
         }
 
+    # โหลด .env ก่อน (ระบุ path แบบ absolute)
+    from pathlib import Path
+    hermes_env = Path.home() / ".hermes" / ".env"
+    load_dotenv(hermes_env)
+
     # เพิ่ม backend path สำหรับ MiniMax client
     backend_path = Path(__file__).parent.parent / "backend"
     if str(backend_path) not in sys.path:
         sys.path.insert(0, str(backend_path))
 
     try:
-        from ai.minimax_client import MiniMaxChatClient
+        from backend.ai.minimax_client import MiniMaxChatClient
 
         client = MiniMaxChatClient(
             api_key=os.getenv("MINIMAX_API_KEY", ""),
@@ -504,7 +516,8 @@ def process_article_with_ai(article_id: int) -> Dict[str, Any]:
     results = {}
 
     # 1. Translate to Thai
-    if not art.get("content_th") and art.get("content"):
+    content_th = art.get("content_th")  # None ถ้ายังไม่เคยแปล
+    if not content_th and art.get("content"):
         logger.info(f"[AI] Translating article {article_id} to Thai")
         content_th = translate_content_to_thai(art["content"])
         with get_db() as conn:
@@ -516,11 +529,11 @@ def process_article_with_ai(article_id: int) -> Dict[str, Any]:
     else:
         results["translated"] = 0
 
-    # 2. Analyze market impact
-    if art.get("content_th"):
+    # 2. Analyze market impact (ใช้ content_th ที่ได้จากขั้นตอนบน)
+    if content_th:
         impact = analyze_market_impact(
             title=art["title"],
-            content=art["content_th"],
+            content=content_th,  # ใช้ตัวแปร content_th โดยตรง ไม่ใช่ art dict
             tags=art["impact_tags"],
         )
         # บันทึก reasoning ลง impact_reasoning field
@@ -548,15 +561,16 @@ def translate_and_analyze_pending(threshold_hours: int = 24) -> List[Dict[str, A
     แล้ว process ทั้งหมด
     """
     cutoff = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
-    rows = _db_execute(
-        """SELECT id, title FROM articles
-         WHERE scraped_at > ?
-         AND (content_th IS NULL OR content_th = ''
-              OR impact_reasoning IS NULL OR impact_reasoning = '')
-         ORDER BY scraped_at DESC
-         LIMIT 10""",
-        (cutoff,),
-    )
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT id, title FROM articles
+             WHERE scraped_at > ?
+             AND (content_th IS NULL OR content_th = ''
+                  OR impact_reasoning IS NULL OR impact_reasoning = '')
+             ORDER BY scraped_at DESC
+             LIMIT 10""",
+            (cutoff,),
+        ).fetchall()
 
     results = []
     for row in rows:
