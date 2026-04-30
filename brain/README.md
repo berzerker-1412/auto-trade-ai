@@ -1,6 +1,6 @@
 # Auto Trade AI — Project Brain
 
-Project knowledge base maintained with Claude Code. Thai-English bilingual — wiki in English, สมุด in Thai.
+Project knowledge base maintained with Claude Code. Thai-English bilingual — wiki in English, wiki_th in Thai.
 
 ## Structure
 
@@ -15,7 +15,7 @@ brain/
 │   ├── concepts/     ← ideas and topics
 │   ├── sources/      ← one summary per ingested source
 │   └── projects/     ← codebase and tool documentation
-└── สมุด/             ← human notes in Thai
+└── wiki_th/             ← human notes in Thai
     ├── index.md
     ├── concepts/
     └── projects/

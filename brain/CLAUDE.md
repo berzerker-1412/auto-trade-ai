@@ -28,7 +28,7 @@ brain/
 ├── CLAUDE.md          ← this file (schema + workflows)
 ├── raw/               ← immutable source documents (never edit)
 │   └── assets/        ← downloaded images referenced by raw docs
-├── สมุด/              ← human-readable notes in Thai (user writes here)
+├── wiki_th/              ← human-readable notes in Thai (user writes here)
 │   ├── index.md       ← สารบัญโน้ตทั้งหมด
 │   ├── concepts/      ← โน้ต concept และ idea
 │   └── projects/      ← โน้ตความรู้เกี่ยวกับ coding projects
@@ -84,7 +84,17 @@ For projects, group by project name under `## Projects`:
 
 ### log.md structure
 
-Append-only. Each entry:
+Append-only. **Keep only the latest 15 entries** — older entries are archived monthly.
+
+**Active log** (`wiki/log.md`): latest 15 entries, most recent first.
+
+**Archive** (`wiki/logs/YYYY-MM.md`): one file per month, all older entries.
+
+When appending to log.md:
+1. Add new entry at the top (after header)
+2. If total entries > 15: move the oldest entries to `wiki/logs/YYYY-MM.md`
+
+**Entry format:**
 
 ```text
 ## [YYYY-MM-DD HH:MM] <operation> | <title>
@@ -133,33 +143,33 @@ When adding knowledge to an existing project: add a new page or update the relev
 4. If the answer is valuable enough to keep (a comparison, analysis, new connection), offer to file it as a new `wiki/` page of type `query`.
 5. If filed: update `wiki/index.md` and append to `wiki/log.md`.
 
-### SYNC — keeping สมุด/ and wiki/ in sync
+### SYNC — keeping wiki_th/ and wiki/ in sync
 
-`สมุด/` คือโน้ตภาษาไทยที่คนเขียนเอง — ไม่มี frontmatter, ไม่มี structure บังคับ เขียนได้อิสระ
+`wiki_th/` คือโน้ตภาษาไทยที่คนเขียนเอง — ไม่มี frontmatter, ไม่มี structure บังคับ เขียนได้อิสระ
 `wiki/` คือ knowledge base ภาษาอังกฤษที่ Claude maintain — structured, cross-linked, AI-readable
 
-> **MANDATORY RULE: ทุกครั้งที่เขียนหรือแก้ไขไฟล์ใดๆ ใน `wiki/` จะต้อง sync มาที่ `สมุด/` เสมอ ไม่มีข้อยกเว้น**
+> **MANDATORY RULE: ทุกครั้งที่เขียนหรือแก้ไขไฟล์ใดๆ ใน `wiki/` จะต้อง sync มาที่ `wiki_th/` เสมอ ไม่มีข้อยกเว้น**
 > การ write wiki page โดยไม่มี sync ถือว่างานไม่เสร็จ
 
 Sync process:
 
-1. **wiki/ → สมุด/** (บังคับหลังทุก write/update ใน wiki/)
-   - ทุก wiki page ที่สร้างหรืออัปเดต → มี `สมุด/` counterpart เสมอ
+1. **wiki/ → wiki_th/** (บังคับหลังทุก write/update ใน wiki/)
+   - ทุก wiki page ที่สร้างหรืออัปเดต → มี `wiki_th/` counterpart เสมอ
    - map path ตรงตัว — โครงสร้างเหมือนกันทุก folder:
-     - `wiki/concepts/foo.md` → `สมุด/concepts/foo.md`
-     - `wiki/entities/foo.md` → `สมุด/entities/foo.md`
-     - `wiki/sources/foo.md` → `สมุด/sources/foo.md`
-     - `wiki/projects/bar/baz.md` → `สมุด/projects/bar/baz.md`
+     - `wiki/concepts/foo.md` → `wiki_th/concepts/foo.md`
+     - `wiki/entities/foo.md` → `wiki_th/entities/foo.md`
+     - `wiki/sources/foo.md` → `wiki_th/sources/foo.md`
+     - `wiki/projects/bar/baz.md` → `wiki_th/projects/bar/baz.md`
    - เขียนเป็นภาษาไทยแบบกันเอง — อธิบาย concept, ทำไมถึงสำคัญ, เชื่อมกับสิ่งที่รู้อยู่แล้วได้ยังไง
    - ไม่ต้องครบทุก detail — เอาแค่ส่วนที่คนจะอยากกลับมาอ่าน
-   - อัปเดต `สมุด/index.md` ทุกครั้ง
+   - อัปเดต `wiki_th/index.md` ทุกครั้ง
 
-2. **สมุด/ → wiki/** (เมื่อ user เขียนโน้ตใหม่ใน สมุด/)
+2. **wiki_th/ → wiki/** (เมื่อ user เขียนโน้ตใหม่ใน wiki_th/)
    - อ่านโน้ตภาษาไทย วิเคราะห์ว่ามี knowledge ใหม่ไหม
    - ถ้ามี: แปลและ ingest เข้า wiki/ ตาม INGEST workflow
    - ถ้าแค่ personal reflection: sync ไม่จำเป็น แต่บอก user
 
-### สมุด/ — format โน้ตภาษาไทย
+### wiki_th/ — format โน้ตภาษาไทย
 
 ไม่มี frontmatter บังคับ เขียนอิสระ แต่แนะนำ structure นี้:
 
@@ -226,5 +236,6 @@ At the start of each session:
 1. Read this file (`CLAUDE.md`).
 2. Read `wiki/index.md` to understand current wiki state.
 3. Read the last 5 entries of `wiki/log.md` to understand recent activity.
-4. Glance at `สมุด/index.md` — check if there are new notes that haven't been synced to wiki/ yet.
-5. Ask the user what they want to do today.
+4. If researching older history, check `wiki/logs/YYYY-MM.md` for archived entries.
+5. Glance at `wiki_th/index.md` — check if there are new notes that haven't been synced to wiki/ yet.
+6. Ask the user what they want to do today.
