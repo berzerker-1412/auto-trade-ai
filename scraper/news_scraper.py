@@ -258,6 +258,7 @@ def get_archived_articles(
             try:
                 art["sentiment_keywords"] = json.loads(art.get("sentiment_keywords") or "[]")
                 art["impact_tags"] = json.loads(art.get("impact_tags") or "[]")
+                art["impact_instruments"] = json.loads(art.get("impact_instruments") or "[]")
             except Exception:
                 pass
 
@@ -314,6 +315,7 @@ def get_article_by_id(article_id: int) -> Optional[Dict]:
         try:
             art["sentiment_keywords"] = json.loads(art.get("sentiment_keywords") or "[]")
             art["impact_tags"] = json.loads(art.get("impact_tags") or "[]")
+            art["impact_instruments"] = json.loads(art.get("impact_instruments") or "[]")
         except Exception:
             pass
 
@@ -537,13 +539,16 @@ def process_article_with_ai(article_id: int) -> Dict[str, Any]:
             tags=art["impact_tags"],
         )
         # บันทึก reasoning ลง impact_reasoning field
+        import json
+        instruments_json = json.dumps(impact.get("impact_instruments", []))
         with get_db() as conn:
             conn.execute(
-                "UPDATE articles SET impact_reasoning = ?, impact_sentiment = ?, impact_risk = ? WHERE id = ?",
+                "UPDATE articles SET impact_reasoning = ?, impact_sentiment = ?, impact_risk = ?, impact_instruments = ? WHERE id = ?",
                 (
                     impact.get("reasoning", ""),
                     impact.get("sentiment", "neutral"),
                     impact.get("risk_level", "low"),
+                    instruments_json,
                     article_id,
                 ),
             )
@@ -622,6 +627,7 @@ def get_articles(
             try:
                 art["sentiment_keywords"] = json.loads(art.get("sentiment_keywords") or "[]")
                 art["impact_tags"] = json.loads(art.get("impact_tags") or "[]")
+                art["impact_instruments"] = json.loads(art.get("impact_instruments") or "[]")
             except Exception:
                 pass
             articles.append(art)
