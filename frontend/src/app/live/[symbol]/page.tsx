@@ -428,11 +428,11 @@ export default function LiveAssetPage() {
             <div className="mt-4 flex items-center gap-6 text-sm">
               <div>
                 <span className="text-gray-500">24h High: </span>
-                <span className="text-white font-medium">${formatCurrency(ticker.high)}</span>
+                <span className="text-white font-medium">{formatCurrency(ticker.high)}</span>
               </div>
               <div>
                 <span className="text-gray-500">24h Low: </span>
-                <span className="text-white font-medium">${formatCurrency(ticker.low)}</span>
+                <span className="text-white font-medium">{formatCurrency(ticker.low)}</span>
               </div>
               <div>
                 <span className="text-gray-500">24h Vol: </span>

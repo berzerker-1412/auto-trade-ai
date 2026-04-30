@@ -172,7 +172,7 @@ export default function AnalysisPage() {
               monthlyStats.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"
             }`}
           >
-            {monthlyStats.totalPnl >= 0 ? "+" : ""}${formatCurrency(monthlyStats.totalPnl)}
+            {monthlyStats.totalPnl >= 0 ? "+" : ""}{formatCurrency(monthlyStats.totalPnl)}
           </p>
         </div>
 
@@ -182,7 +182,7 @@ export default function AnalysisPage() {
             Best Trade
           </div>
           <p className="text-2xl font-bold text-emerald-400">
-            +${formatCurrency(bestTrade?.pnl || 0)}
+            +{formatCurrency(bestTrade?.pnl || 0)}
           </p>
           <p className="text-sm text-gray-500">{bestTrade?.symbol}</p>
         </div>
@@ -201,17 +201,17 @@ export default function AnalysisPage() {
               <div className="flex items-center justify-between">
                 <span className="text-white font-semibold">{bestTrade.symbol}</span>
                 <span className="text-2xl font-bold text-emerald-400">
-                  +${formatCurrency(bestTrade.pnl || 0)}
+                  +{formatCurrency(bestTrade.pnl || 0)}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500">Entry</p>
-                  <p className="text-white">${formatCurrency(bestTrade.entry_price)}</p>
+                  <p className="text-white">{formatCurrency(bestTrade.entry_price)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Exit</p>
-                  <p className="text-white">${formatCurrency(bestTrade.exit_price || 0)}</p>
+                  <p className="text-white">{formatCurrency(bestTrade.exit_price || 0)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Return</p>
@@ -236,17 +236,17 @@ export default function AnalysisPage() {
               <div className="flex items-center justify-between">
                 <span className="text-white font-semibold">{worstTrade.symbol}</span>
                 <span className="text-2xl font-bold text-red-400">
-                  ${formatCurrency(worstTrade.pnl || 0)}
+                  {formatCurrency(worstTrade.pnl || 0)}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500">Entry</p>
-                  <p className="text-white">${formatCurrency(worstTrade.entry_price)}</p>
+                  <p className="text-white">{formatCurrency(worstTrade.entry_price)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Exit</p>
-                  <p className="text-white">${formatCurrency(worstTrade.exit_price || 0)}</p>
+                  <p className="text-white">{formatCurrency(worstTrade.exit_price || 0)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Return</p>

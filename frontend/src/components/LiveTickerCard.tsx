@@ -141,13 +141,13 @@ export function LiveTickerCard({ symbol, name, color, ticker }: LiveTickerCardPr
           <div>
             <p className="text-xs text-gray-600">24h High</p>
             <p className="text-sm font-semibold text-white mt-0.5">
-              ${formatCurrency(ticker.high)}
+              {formatCurrency(ticker.high)}
             </p>
           </div>
           <div>
             <p className="text-xs text-gray-600">24h Low</p>
             <p className="text-sm font-semibold text-white mt-0.5">
-              ${formatCurrency(ticker.low)}
+              {formatCurrency(ticker.low)}
             </p>
           </div>
           <div>

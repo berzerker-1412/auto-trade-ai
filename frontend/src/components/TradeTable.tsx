@@ -83,14 +83,14 @@ export function TradeTable({ trades, title, limit }: TradeTableProps) {
                     ${formatCurrency(trade.entry_price)}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-400">
-                    {trade.exit_price ? `$${formatCurrency(trade.exit_price)}` : "-"}
+                    {trade.exit_price ? `${formatCurrency(trade.exit_price)}` : "-"}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-400">
                     {trade.quantity}
                   </td>
                   <td className={cn("px-6 py-4 font-medium", getPnLColor(trade.pnl))}>
                     {trade.pnl !== null && trade.pnl !== undefined
-                      ? `${trade.pnl >= 0 ? "+" : ""}$${formatCurrency(trade.pnl)}`
+                      ? `${trade.pnl >= 0 ? "+" : ""}${formatCurrency(trade.pnl)}`
                       : "-"}
                   </td>
                   <td className="px-6 py-4">

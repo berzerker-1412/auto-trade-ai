@@ -44,7 +44,7 @@ export function EquityCurve({ data, initialBalance }: EquityCurveProps) {
         <div className="text-right">
           <p className="text-sm text-gray-500">Current</p>
           <p className="text-xl font-bold text-white">
-            ${formatCurrency(data[data.length - 1]?.equity || 0)}
+            {formatCurrency(data[data.length - 1]?.equity || 0)}
           </p>
         </div>
       </div>
@@ -88,7 +88,7 @@ export function EquityCurve({ data, initialBalance }: EquityCurveProps) {
               }}
               labelStyle={{ color: "#9ca3af" }}
               formatter={(value) => [
-                `$${formatCurrency(Number(value))}`,
+                `{formatCurrency(Number(value))}`,
                 "Value",
               ]}
             />

@@ -13,6 +13,7 @@ import {
   Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { THBBalance } from "@/components/ExchangeRate";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -74,7 +75,12 @@ export default function Sidebar() {
               <Wallet className="h-3.5 w-3.5" />
               Paper Balance
             </div>
+            {/* USD */}
             <div className="text-2xl font-bold text-white">$105,000</div>
+            {/* THB */}
+            <div className="text-sm font-medium text-amber-400 mt-0.5">
+              <THBBalance usdAmount={105000} />
+            </div>
             <div className="text-sm text-emerald-400">+$5,000 (5.0%)</div>
           </div>
         </div>

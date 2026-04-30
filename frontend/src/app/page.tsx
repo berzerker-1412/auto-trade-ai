@@ -11,6 +11,7 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { TradeTable } from "@/components/TradeTable";
 import { TickerCard } from "@/components/TickerCard";
+import { ExchangeRateTicker, THBStatsCard } from "@/components/ExchangeRate";
 import { api } from "@/lib/api";
 import { Trade, Ticker } from "@/types";
 
@@ -93,6 +94,28 @@ export default function DashboardPage() {
           subValue={`${stats.activeTrades} active`}
           icon={Award}
         />
+      </div>
+
+      {/* THB Exchange Rate */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <h2 className="text-xl font-semibold text-white mb-4">💱 อัตราแลกเปลี่ยน (THB)</h2>
+          <ExchangeRateTicker />
+        </div>
+        <div className="space-y-4">
+          <THBStatsCard
+            title="Balance (THB)"
+            usdValue={stats.balance}
+            icon={<Wallet className="h-3.5 w-3.5" />}
+            subValue="≈ $105,000"
+          />
+          <THBStatsCard
+            title="Total P&L (THB)"
+            usdValue={stats.totalPnl}
+            icon={<TrendingUp className="h-3.5 w-3.5" />}
+            subValue="+$5,000"
+          />
+        </div>
       </div>
 
       {/* Market Tickers */}

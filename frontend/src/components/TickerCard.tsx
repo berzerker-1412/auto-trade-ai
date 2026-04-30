@@ -67,11 +67,11 @@ export function TickerCard({ ticker, onClick }: TickerCardProps) {
       <div className="mt-4 grid grid-cols-3 gap-4">
         <div>
           <p className="text-xs text-gray-500">24h High</p>
-          <p className="text-sm font-medium text-white">${formatCurrency(ticker.high)}</p>
+          <p className="text-sm font-medium text-white">{formatCurrency(ticker.high)}</p>
         </div>
         <div>
           <p className="text-xs text-gray-500">24h Low</p>
-          <p className="text-sm font-medium text-white">${formatCurrency(ticker.low)}</p>
+          <p className="text-sm font-medium text-white">{formatCurrency(ticker.low)}</p>
         </div>
         <div>
           <p className="text-xs text-gray-500">Volume</p>

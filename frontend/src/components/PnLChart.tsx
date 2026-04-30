@@ -170,13 +170,13 @@ export function PnLDistribution({ trades }: PnLChartProps) {
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Avg Win</span>
               <span className="text-emerald-400 font-medium">
-                ${formatCurrency(avgWin)}
+                {formatCurrency(avgWin)}
               </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Avg Loss</span>
               <span className="text-red-400 font-medium">
-                ${formatCurrency(avgLoss)}
+                {formatCurrency(avgLoss)}
               </span>
             </div>
             {avgLoss !== 0 && (

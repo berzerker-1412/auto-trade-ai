@@ -118,26 +118,26 @@ export default function TradePage() {
                 <div>
                   <p className="text-sm text-gray-500">{currentTicker.symbol}</p>
                   <p className="mt-2 text-4xl font-bold text-white">
-                    ${formatCurrency(currentTicker.price)}
+                    {formatCurrency(currentTicker.price)}
                   </p>
                 </div>
                 <div className="text-right">
                   <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                     <div>
                       <p className="text-gray-500">High</p>
-                      <p className="font-medium text-white">${formatCurrency(currentTicker.high)}</p>
+                      <p className="font-medium text-white">{formatCurrency(currentTicker.high)}</p>
                     </div>
                     <div>
                       <p className="text-gray-500">Low</p>
-                      <p className="font-medium text-white">${formatCurrency(currentTicker.low)}</p>
+                      <p className="font-medium text-white">{formatCurrency(currentTicker.low)}</p>
                     </div>
                     <div>
                       <p className="text-gray-500">Bid</p>
-                      <p className="font-medium text-emerald-400">${formatCurrency(currentTicker.bid)}</p>
+                      <p className="font-medium text-emerald-400">{formatCurrency(currentTicker.bid)}</p>
                     </div>
                     <div>
                       <p className="text-gray-500">Ask</p>
-                      <p className="font-medium text-red-400">${formatCurrency(currentTicker.ask)}</p>
+                      <p className="font-medium text-red-400">{formatCurrency(currentTicker.ask)}</p>
                     </div>
                   </div>
                 </div>

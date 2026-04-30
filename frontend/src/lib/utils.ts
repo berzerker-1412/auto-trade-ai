@@ -15,10 +15,11 @@ export function formatNumber(num: number, decimals = 2): string {
 }
 
 export function formatCurrency(amount: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
+  const isTHB = currency === "THB";
+  return new Intl.NumberFormat(isTHB ? "th-TH" : "en-US", {
     style: "currency",
     currency,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: isTHB ? 2 : 2,
     maximumFractionDigits: 2,
   }).format(amount);
 }
